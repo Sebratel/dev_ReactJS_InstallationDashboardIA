@@ -37,7 +37,9 @@ import type { AoFiltrar } from '../../utils/rota.ts';
 import { useCaixa } from '../../hooks/useCaixa.ts';
 import { useCliqueNoEixo } from '../../hooks/useCliqueNoEixo.ts';
 import { LinhaDoRanking } from './ranking/LinhaDoRanking.tsx';
+import { TooltipDoGrafico } from './TooltipDoGrafico.tsx';
 import { MensagemDeEstado } from '../ui/Estado.tsx';
+import { montaTooltipDeRanking, type PosicaoDoPonteiro } from '../../utils/graficoTooltip.ts';
 
 const MARGEM = { topo: 4, base: 4, esquerda: 4, direita: 52 };
 const VAO = 6;
@@ -64,6 +66,7 @@ export function RankingBarra({
   // TODOS os hooks antes de qualquer `return` — mesma ordem de `Grafico.tsx`, pelo
   // mesmo motivo: `dados` pode chegar vazio num quadro e cheio no seguinte.
   const [inicio, setInicio] = useState(0);
+  const [posPonteiro, setPosPonteiro] = useState<PosicaoDoPonteiro | null>(null);
   const [caixaRef, caixa] = useCaixa();
 
   const dadosDoGrafico = visual.dados as DadosDeGrafico | undefined;
@@ -175,6 +178,24 @@ export function RankingBarra({
     />
   ) : null;
 
+  const somaTotal = ordenadas.reduce((soma, linha) => soma + Math.max(0, linha.valor ?? 0), 0);
+  const opcaoAtiva = clique.sob !== null ? (visiveis[clique.sob] ?? null) : null;
+  const dadosTooltip =
+    opcaoAtiva && clique.sob !== null
+      ? montaTooltipDeRanking({
+          rotulo: opcaoAtiva.rotulo,
+          valor: opcaoAtiva.valor,
+          posicao: deslocamento + clique.sob + 1,
+          totalItens: totalLinhas,
+          maior,
+          somaTotal,
+          cor: corBarra,
+          tipo: dadosDoGrafico.tiposDeSerie[0] ?? null,
+          nomeMedida,
+          podeClicar: clique.podeClicar(clique.sob),
+        })
+      : null;
+
   return (
     <Cartao titulo={titulo} id={visual.id} altura="grafico" acoes={paginador}>
       {gTudo.avisos.map((aviso) => (
@@ -185,7 +206,15 @@ export function RankingBarra({
 
       {/* Mesma regra do `Grafico.tsx`: a caixa é medida, o `<svg>` recebe a medida dela —
           `overflow: hidden` é deliberado, quem não cabe pagina. */}
-      <div className="caixa-grafico" ref={caixaRef}>
+      <div
+        className="caixa-grafico"
+        ref={caixaRef}
+        onMouseMove={(evento) => setPosPonteiro({ x: evento.clientX, y: evento.clientY })}
+        onMouseLeave={() => {
+          setPosPonteiro(null);
+          clique.aoSair();
+        }}
+      >
         <svg
           className="grafico-svg ranking-barra-svg"
           width={caixa.w}
@@ -220,6 +249,7 @@ export function RankingBarra({
           ))}
         </svg>
       </div>
+      <TooltipDoGrafico dados={dadosTooltip} pos={posPonteiro} />
     </Cartao>
   );
 }

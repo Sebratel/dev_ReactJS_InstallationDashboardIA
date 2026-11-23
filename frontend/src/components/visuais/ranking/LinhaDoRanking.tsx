@@ -103,7 +103,6 @@ export function LinhaDoRanking(props: {
       <text className="ranking-valor" x={esquerda + larguraTotal + 8} y={meio} textAnchor="start">
         {formata(valor, props.tipo).texto}
       </text>
-      <title>{`${posicao}º · ${rotulo}: ${formata(valor, props.tipo).texto}`}</title>
     </g>
   );
 }

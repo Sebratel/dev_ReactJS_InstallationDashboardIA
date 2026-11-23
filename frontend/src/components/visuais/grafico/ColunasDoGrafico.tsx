@@ -196,7 +196,7 @@ export function ColunasDoGrafico(props: {
 
   return (
     <>
-      {categorias.map((categoriaAtual, posicao) => {
+      {categorias.map((_, posicao) => {
         const acumulado = { alto: 0 };
         // A fatia de cima da pilha é a última com valor: só ela leva o topo redondo.
         let ultima = -1;
@@ -222,7 +222,6 @@ export function ColunasDoGrafico(props: {
           });
           topoDaCategoria = Math.min(topoDaCategoria, cima);
           const cor = unica ? corDaColunaPorValor(valorAtual, min, max) : area.cor;
-          const titulo = `${categoriaAtual.rotulo} · ${area.nome}: ${fmt(area.valores[posicao] ?? null)}`;
 
           // O número de CADA fatia. `percentual` escreve a porcentagem desenhada (que é o
           // valor da parte); os demais escrevem o valor cru, não o da pilha.
@@ -246,9 +245,7 @@ export function ColunasDoGrafico(props: {
               key={area.chave}
               d={colunaDeTopoRedondo(esquerda, cima, geo.larguraDaFatia, altura)}
               fill={cor}
-            >
-              <title>{titulo}</title>
-            </path>
+            />
           ) : (
             <rect
               key={area.chave}
@@ -257,9 +254,7 @@ export function ColunasDoGrafico(props: {
               width={geo.larguraDaFatia}
               height={altura}
               fill={cor}
-            >
-              <title>{titulo}</title>
-            </rect>
+            />
           );
         });
         // O chip: o valor da série única, ou o total da pilha.
