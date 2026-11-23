@@ -17,8 +17,8 @@ export interface CelulaDaMatriz {
 export function rotuloDaLinha(matriz: DadosDeMatriz, linha: Chave): string {
   return linha
     .map(
-      (x, indice) =>
-        formata(x, matriz.tiposDeLinha[indice] ?? null, {
+      (valor, indice) =>
+        formata(valor, matriz.tiposDeLinha[indice] ?? null, {
           semAgrupamento: ehColunaDeAno(matriz.chavesDeLinha[indice]?.nome),
         }).texto,
     )
@@ -28,8 +28,8 @@ export function rotuloDaLinha(matriz: DadosDeMatriz, linha: Chave): string {
 export function rotuloDaColuna(matriz: DadosDeMatriz, coluna: Chave): string {
   return coluna
     .map(
-      (x, indice) =>
-        formata(x, matriz.tiposDeColuna[indice] ?? null, {
+      (valor, indice) =>
+        formata(valor, matriz.tiposDeColuna[indice] ?? null, {
           semAgrupamento: ehColunaDeAno(matriz.chavesDeColuna[indice]?.nome),
         }).texto,
     )

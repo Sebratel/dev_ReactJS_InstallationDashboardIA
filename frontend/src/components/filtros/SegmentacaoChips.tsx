@@ -104,7 +104,7 @@ export function SegmentacaoChips(props: {
       >
         <ChipsOuAviso erro={erro} vazio={opcoes === null} />
         {opcoes?.map((opcao, indice) => {
-          const marcado = props.selecao.some((x) => Object.is(x, opcao.valor));
+          const marcado = props.selecao.some((selecionado) => Object.is(selecionado, opcao.valor));
           return (
             <button
               key={indice}

@@ -37,8 +37,10 @@ export interface EstadoDaTela {
 
 /** A seleção depois de clicar em `v`: entra, ou sai se já estava. */
 export function alternaValor(selecao: readonly Valor[], valor: Valor): Valor[] {
-  const marcado = selecao.some((x) => Object.is(x, valor));
-  return marcado ? selecao.filter((x) => !Object.is(x, valor)) : [...selecao, valor];
+  const marcado = selecao.some((selecionado) => Object.is(selecionado, valor));
+  return marcado
+    ? selecao.filter((selecionado) => !Object.is(selecionado, valor))
+    : [...selecao, valor];
 }
 
 /**

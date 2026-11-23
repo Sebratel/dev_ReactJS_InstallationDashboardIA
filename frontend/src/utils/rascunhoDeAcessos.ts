@@ -51,11 +51,11 @@ export interface PessoaNaTela extends PessoaDeAcesso {
   mudou: boolean;
 }
 
-const mesmoConjunto = (alvo: readonly string[], segundo: readonly string[]) =>
-  alvo.length === segundo.length && alvo.every((x) => segundo.includes(x));
+const mesmoConjunto = (uma: readonly string[], outra: readonly string[]) =>
+  uma.length === outra.length && uma.every((item) => outra.includes(item));
 
-const semChave = <T>(opcao: Record<string, T>, indiceSerie: string) => {
-  const { [indiceSerie]: _, ...resto } = opcao;
+const semChave = <T>(objeto: Record<string, T>, chave: string) => {
+  const { [chave]: _, ...resto } = objeto;
   return resto;
 };
 
@@ -254,7 +254,7 @@ export function comPessoa(rascunho: RascunhoDeAcessos, email: string): RascunhoD
   return {
     ...rascunho,
     novos: [...rascunho.novos, entrada],
-    removidos: rascunho.removidos.filter((x) => x !== entrada),
+    removidos: rascunho.removidos.filter((removido) => removido !== entrada),
   };
 }
 

@@ -66,8 +66,10 @@ export function Segmentacao(props: {
 
   /** A seleção depois de clicar em `v` — a mesma conta para o clique e para a previsão. */
   function proxima(valor: Valor): Valor[] {
-    const marcado = props.selecao.some((x) => mesmoValor(x, valor));
-    return marcado ? props.selecao.filter((x) => !mesmoValor(x, valor)) : [...props.selecao, valor];
+    const marcado = props.selecao.some((selecionado) => mesmoValor(selecionado, valor));
+    return marcado
+      ? props.selecao.filter((selecionado) => !mesmoValor(selecionado, valor))
+      : [...props.selecao, valor];
   }
 
   function alterna(valor: Valor): void {
@@ -148,7 +150,9 @@ export function Segmentacao(props: {
               ) : (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-[2px]">
                   {visiveis.map((opcao, indice) => {
-                    const marcado = props.selecao.some((x) => mesmoValor(x, opcao.valor));
+                    const marcado = props.selecao.some((selecionado) =>
+                      mesmoValor(selecionado, opcao.valor),
+                    );
                     const formatado = formata(opcao.valor, opcao.tipo);
                     return (
                       <label

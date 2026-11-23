@@ -17,11 +17,11 @@ const COS_45 = 0.71;
  */
 export function prefixoComum(partesPorCategoria: readonly (readonly string[])[]): number {
   if (partesPorCategoria.length <= 1) return 0;
-  const minPartes = Math.min(...partesPorCategoria.map((x) => x.length));
+  const minPartes = Math.min(...partesPorCategoria.map((partes) => partes.length));
   let numero = 0;
   while (
     numero < minPartes - 1 &&
-    partesPorCategoria.every((x) => x[numero] === partesPorCategoria[0]![numero])
+    partesPorCategoria.every((partes) => partes[numero] === partesPorCategoria[0]![numero])
   )
     numero += 1;
   return numero;
@@ -160,8 +160,8 @@ export function orcamentoDoRotulo(banda: number, passo: number, margemDeBaixo: n
 /** O `d` de um `<path>` de série: um traço por trecho contínuo — o nulo interrompe a linha. */
 export function caminhoDaSerie(
   valores: readonly (number | null)[],
-  x: (i: number) => number,
-  y: (v: number) => number,
+  posX: (indice: number) => number,
+  posY: (valor: number) => number,
 ): string {
   const partes: string[] = [];
   let abriu = false;
@@ -170,7 +170,7 @@ export function caminhoDaSerie(
       abriu = false;
       return;
     }
-    partes.push(`${abriu ? 'L' : 'M'}${x(indice).toFixed(1)} ${y(valor).toFixed(1)}`);
+    partes.push(`${abriu ? 'L' : 'M'}${posX(indice).toFixed(1)} ${posY(valor).toFixed(1)}`);
     abriu = true;
   });
   return partes.join(' ');

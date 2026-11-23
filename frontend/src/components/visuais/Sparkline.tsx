@@ -40,13 +40,14 @@ export function Sparkline({ dados }: { dados: DadosDeGrafico }) {
   const maior = Math.max(...janela);
   const menor = Math.min(...janela);
   const alcance = maior - menor || 1;
-  const x = (indice: number) => (indice / (janela.length - 1)) * LARGURA;
-  const y = (valor: number) => ALTURA - FOLGA - ((valor - menor) / alcance) * (ALTURA - FOLGA * 2);
+  const posX = (indice: number) => (indice / (janela.length - 1)) * LARGURA;
+  const posY = (valor: number) =>
+    ALTURA - FOLGA - ((valor - menor) / alcance) * (ALTURA - FOLGA * 2);
 
   const caminho = janela
     .map(
       (valor, indice) =>
-        `${indice === 0 ? 'M' : 'L'}${x(indice).toFixed(1)} ${y(valor).toFixed(1)}`,
+        `${indice === 0 ? 'M' : 'L'}${posX(indice).toFixed(1)} ${posY(valor).toFixed(1)}`,
     )
     .join(' ');
   const ultimo = janela[janela.length - 1]!;
@@ -71,8 +72,8 @@ export function Sparkline({ dados }: { dados: DadosDeGrafico }) {
       />
       <circle
         className="sparkline-ponto"
-        cx={x(janela.length - 1)}
-        cy={y(ultimo)}
+        cx={posX(janela.length - 1)}
+        cy={posY(ultimo)}
         r={2}
         fill={cor}
       />

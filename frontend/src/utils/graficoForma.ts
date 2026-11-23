@@ -324,7 +324,7 @@ function ordenaPorData(
       }
       return 0;
     })
-    .map((x) => x.c);
+    .map((ordenada) => ordenada.c);
 }
 
 /**

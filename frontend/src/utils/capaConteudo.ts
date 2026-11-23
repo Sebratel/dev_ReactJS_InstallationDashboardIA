@@ -57,7 +57,7 @@ export const CARD_DATA = 'e3e8acb8ee46c4565d20';
 export const CARD_HORA = '1d10da9f7a3e9a66d8ab';
 
 export function valorDoCard(visuais: readonly VisualCalculado[], id: string): string {
-  const visual = visuais.find((x) => x.id === id);
+  const visual = visuais.find((item) => item.id === id);
   const dadosDoCard =
     visual && !visual.erro && visual.conteudo === 'card'
       ? (visual.dados as DadosDeCard | undefined)
@@ -118,11 +118,11 @@ export function situacaoDaFonte(
     };
   });
 
-  const maisVelha = Math.min(...porQuery.map((x) => x.em));
+  const maisVelha = Math.min(...porQuery.map((consulta) => consulta.em));
   // Cadência só com todas conhecidas. Com o agendador fora da API (o refresh roda em outro
   // container), a query sem poll fica sem cadência, e o máximo das restantes dava "há 33min ·
   // a cada 30 s" — a cadência do poll ao lado da idade da carga.
-  const cadencias = porQuery.map((x) => x.cadenciaMin);
+  const cadencias = porQuery.map((consulta) => consulta.cadenciaMin);
   const todas = cadencias.every((cadencia): cadencia is number => cadencia !== null);
   return {
     status,
@@ -142,10 +142,10 @@ function proximaDaFamilia(
   porQuery: readonly { pollEmDia: boolean; proxima: number }[],
   agora: number,
 ): string | null {
-  const esperando = porQuery.filter((x) => !x.pollEmDia);
+  const esperando = porQuery.filter((consulta) => !consulta.pollEmDia);
   if (esperando.length === 0) return 'ao vivo';
-  if (esperando.some((x) => Number.isNaN(x.proxima))) return null;
-  const quando = Math.max(...esperando.map((x) => x.proxima));
+  if (esperando.some((consulta) => Number.isNaN(consulta.proxima))) return null;
+  const quando = Math.max(...esperando.map((consulta) => consulta.proxima));
   return quando <= agora ? 'próxima a qualquer momento' : `próxima ~${horaCurta(quando)}`;
 }
 

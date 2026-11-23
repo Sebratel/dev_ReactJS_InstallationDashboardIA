@@ -66,15 +66,14 @@ export default tseslint.config(
       'max-depth': ['error', 3],
       'max-nested-callbacks': ['error', 3],
 
-      // **Nome de variável é documentação (23/11/2026).** `d`, `q`, `p`, `s`, `t` não
+      // **Nome de variável é documentação (23/11/2026).** `d`, `q`, `p`, `s`, `t`, `x` não
       // dizem o que guardam, e quem lê seis meses depois tem de reconstruir o contexto
-      // inteiro para entender uma linha. O mínimo é 3 letras, com quatro exceções:
-      //   - `id`  — termo do domínio, usado assim em toda a API;
-      //   - `x`/`y` — coordenadas de SVG, onde a convenção matemática É o nome claro;
+      // inteiro para entender uma linha. O mínimo é 3 letras, com apenas duas exceções:
+      //   - `id` — termo do domínio, usado assim em toda a API;
       //   - `_`  — descarte proposital, a mesma convenção do `no-unused-vars` acima.
       // `properties: 'never'` porque as CHAVES vêm do contrato da API (`d.de`, `p.p10`)
-      // e renomeá-las quebraria a resposta do servidor.
-      'id-length': ['error', { min: 3, exceptions: ['id', 'x', 'y', '_'], properties: 'never' }],
+      // e atributos SVG (`<rect x={...} y={...} />`).
+      'id-length': ['error', { min: 3, exceptions: ['id', '_'], properties: 'never' }],
 
       // **`sonarjs/todo-tag` fica DESLIGADA de propósito.** A documentação e os
       // comentários deste repositório são em português (CLAUDE.md, regra 6), e a regra

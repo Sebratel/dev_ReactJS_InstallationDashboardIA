@@ -107,7 +107,9 @@ function EditorDePerfil(props: {
               disabled={ocupado}
               onChange={(evento) =>
                 setTelas((atual) =>
-                  evento.target.checked ? [...atual, tela.id] : atual.filter((x) => x !== tela.id),
+                  evento.target.checked
+                    ? [...atual, tela.id]
+                    : atual.filter((telaId) => telaId !== tela.id),
                 )
               }
             />

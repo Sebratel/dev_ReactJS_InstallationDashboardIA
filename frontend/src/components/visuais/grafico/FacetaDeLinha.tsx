@@ -23,14 +23,14 @@ export function FacetaDeLinha({
   const teto = maiorValorDe(series, 1);
   const marcas = marcasDoEixo(teto, 2);
   const topo = Math.max(...marcas, 1);
-  const y = (valor: number) => topoDoPainel + altura * (1 - valor / topo);
+  const posY = (valor: number) => topoDoPainel + altura * (1 - valor / topo);
 
   return (
     <g>
       {marcas.map((medida) => (
         <g key={medida}>
-          <line className="grade" x1={esquerda} x2={direita} y1={y(medida)} y2={y(medida)} />
-          <text className="tick" x={esquerda - 8} y={y(medida) + 3.5} textAnchor="end">
+          <line className="grade" x1={esquerda} x2={direita} y1={posY(medida)} y2={posY(medida)} />
+          <text className="tick" x={esquerda - 8} y={posY(medida) + 3.5} textAnchor="end">
             {inteiro(medida)}
           </text>
         </g>
@@ -39,7 +39,7 @@ export function FacetaDeLinha({
         <g key={serie.chave}>
           <path
             className="linha-serie"
-            d={caminhoDaSerie(serie.valores, xMeio, y)}
+            d={caminhoDaSerie(serie.valores, xMeio, posY)}
             stroke={serie.cor}
           />
           {serie.valores.map((valor, indice) =>
@@ -48,7 +48,7 @@ export function FacetaDeLinha({
                 key={indice}
                 className="ponto-serie"
                 cx={xMeio(indice)}
-                cy={y(valor)}
+                cy={posY(valor)}
                 r={4}
                 fill={serie.cor}
               />

@@ -31,8 +31,8 @@ export function KpiGridSection({
   const cards = (layout?.kpis ?? [])
     .map((kpi) => ({ entrada: kpi, visual: porId.get(kpi.visual) }))
     .filter(
-      (x): x is { entrada: KpiEntry; visual: VisualCalculado } =>
-        x.visual != null && !x.visual.erro,
+      (item): item is { entrada: KpiEntry; visual: VisualCalculado } =>
+        item.visual != null && !item.visual.erro,
     );
   const idsDestaque = new Set(
     (layout?.kpis ?? []).filter((kpi) => kpi.enfase === 'alta').map((kpi) => kpi.visual),

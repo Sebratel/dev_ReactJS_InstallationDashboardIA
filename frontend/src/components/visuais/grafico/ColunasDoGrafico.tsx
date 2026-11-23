@@ -29,9 +29,9 @@ const FONTE_DO_CHIP = 11;
 const FONTE_DO_ROTULO = 10;
 
 /** Retângulo com só os cantos de cima arredondados. */
-function colunaDeTopoRedondo(x: number, y: number, largura: number, altura: number): string {
+function colunaDeTopoRedondo(posX: number, posY: number, largura: number, altura: number): string {
   const raio = Math.max(0, Math.min(RAIO, largura / 2, altura));
-  return `M${x},${y + altura}V${y + raio}Q${x},${y} ${x + raio},${y}H${x + largura - raio}Q${x + largura},${y} ${x + largura},${y + raio}V${y + altura}Z`;
+  return `M${posX},${posY + altura}V${posY + raio}Q${posX},${posY} ${posX + raio},${posY}H${posX + largura - raio}Q${posX + largura},${posY} ${posX + largura},${posY + raio}V${posY + altura}Z`;
 }
 
 /** O chip do valor: retângulo na cor do texto, letra na cor da superfície — escuro no

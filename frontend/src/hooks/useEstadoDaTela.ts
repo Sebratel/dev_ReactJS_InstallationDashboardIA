@@ -76,7 +76,9 @@ export function aplicaClique(
   padrao: readonly FiltroDaTela[],
 ): { filtros: FiltroDaTela[]; clicados: CampoClicado[] } {
   const depois = alternaAlvos(filtros, alvos, padrao);
-  const aindaFiltradas = new Set(depois.filter((x) => x.valores.length > 0).map(chaveDeCampo));
+  const aindaFiltradas = new Set(
+    depois.filter((filtro) => filtro.valores.length > 0).map(chaveDeCampo),
+  );
   const mapa = new Map(clicados.map((campoClicado) => [chaveDeCampo(campoClicado), campoClicado]));
   for (const alvo of alvos) {
     const indiceSerie = chaveDeCampo(alvo);

@@ -130,7 +130,7 @@ export interface MudancaDeNivel {
 }
 
 function alterna<T>(lista: readonly T[], valor: T): T[] {
-  return lista.includes(valor) ? lista.filter((x) => x !== valor) : [...lista, valor];
+  return lista.includes(valor) ? lista.filter((item) => item !== valor) : [...lista, valor];
 }
 
 export function clicaAno(sel: SelecaoDeData, ano: number): MudancaDeNivel[] {

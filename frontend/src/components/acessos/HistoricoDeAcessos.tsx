@@ -33,9 +33,9 @@ const ACOES: Record<string, string> = {
 function listaDeAbas(valor: string | null): string[] | null {
   if (valor === null) return null;
   try {
-    const opcao: unknown = JSON.parse(valor);
-    return Array.isArray(opcao) && opcao.every((x) => typeof x === 'string')
-      ? (opcao as string[])
+    const lista: unknown = JSON.parse(valor);
+    return Array.isArray(lista) && lista.every((item) => typeof item === 'string')
+      ? (lista as string[])
       : null;
   } catch {
     return null;
