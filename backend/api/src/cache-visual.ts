@@ -174,6 +174,7 @@ export function estimaBytes(v: unknown): number {
     default:
       return 8;
   }
+  if (ArrayBuffer.isView(v)) return 16 + v.byteLength;
   if (Array.isArray(v)) {
     let n = 16;
     for (const x of v) n += estimaBytes(x);
