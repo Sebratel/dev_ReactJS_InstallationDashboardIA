@@ -31,7 +31,7 @@ export function useEu() {
   return useQuery({
     queryKey: chavesDeConsulta.dashboards,
     queryFn: () => listaDashboards(),
-    select: (r) => r.eu ?? null,
+    select: (registro) => registro.eu ?? null,
   });
 }
 
@@ -41,7 +41,7 @@ export function useDashboards() {
   return useQuery({
     queryKey: chavesDeConsulta.dashboards,
     queryFn: () => listaDashboards(),
-    select: (r) => r.dashboards.filter((d) => d.tooltip !== true),
+    select: (registro) => registro.dashboards.filter((dados) => dados.tooltip !== true),
   });
 }
 
@@ -112,8 +112,8 @@ export function useSaude() {
 }
 
 /** Os visuais que o servidor deixou fora da abertura por serem caros (`sobDemanda`). */
-export function idsSobDemanda(p: PaginaCalculada | null | undefined): string[] {
-  return (p?.visuais ?? []).filter((v) => v.sobDemanda).map((v) => v.id);
+export function idsSobDemanda(ponto: PaginaCalculada | null | undefined): string[] {
+  return (ponto?.visuais ?? []).filter((visual) => visual.sobDemanda).map((visual) => visual.id);
 }
 
 /**
@@ -127,16 +127,19 @@ export function idsSobDemanda(p: PaginaCalculada | null | undefined): string[] {
  * vizinhança não virar rajada; sem ela (hover), juntos, porque o clique vem logo.
  */
 export async function preCarregaEstado(
-  qc: QueryClient,
+  queryClient: QueryClient,
   id: string,
   layout: LayoutSpec,
   filtros: readonly FiltroDaTela[],
   clicados: Clicados,
   origem?: 'prefetch',
 ): Promise<void> {
-  const p = await qc.fetchQuery(consultaDaAbertura(id, layout, filtros, clicados, origem));
-  const visuais = idsSobDemanda(p).map(
-    (v) => () => qc.prefetchQuery(consultaDoVisual(id, v, filtros, clicados, origem)),
+  const ponto = await queryClient.fetchQuery(
+    consultaDaAbertura(id, layout, filtros, clicados, origem),
+  );
+  const visuais = idsSobDemanda(ponto).map(
+    (valor) => () =>
+      queryClient.prefetchQuery(consultaDoVisual(id, valor, filtros, clicados, origem)),
   );
   if (origem) for (const busca of visuais) await busca();
   else await Promise.all(visuais.map((busca) => busca()));
@@ -144,16 +147,16 @@ export async function preCarregaEstado(
 
 /** Pré-carrega a abertura de uma página com os filtros dela, sem tocar na tela. */
 export async function preCarregaAbertura(
-  qc: QueryClient,
+  queryClient: QueryClient,
   id: string,
   filtros: readonly FiltroDaTela[],
   clicados: Clicados = [],
 ): Promise<void> {
-  const layout = await qc.fetchQuery({
+  const layout = await queryClient.fetchQuery({
     queryKey: chavesDeConsulta.layout(id),
     queryFn: ({ signal }) => pegaLayout(id, signal),
   });
-  await preCarregaEstado(qc, id, layout, filtros, clicados);
+  await preCarregaEstado(queryClient, id, layout, filtros, clicados);
 }
 
 /**
@@ -168,13 +171,13 @@ export function useValoresDaSegmentacao(
   coluna: string,
   nivel?: string | null,
 ) {
-  const q = useQuery({
+  const consulta = useQuery({
     queryKey: chavesDeConsulta.valores(pagina, tabela, coluna, nivel),
     queryFn: ({ signal }) => pegaValores(pagina, tabela, coluna, nivel ?? undefined, signal),
   });
   return {
-    opcoes: q.data?.valores ?? null,
-    cortado: q.data?.cortado ?? false,
-    erro: q.error ? textoDoErro(q.error) : null,
+    opcoes: consulta.data?.valores ?? null,
+    cortado: consulta.data?.cortado ?? false,
+    erro: consulta.error ? textoDoErro(consulta.error) : null,
   };
 }

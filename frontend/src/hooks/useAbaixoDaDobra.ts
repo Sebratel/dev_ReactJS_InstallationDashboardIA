@@ -27,7 +27,7 @@ export function useAbaixoDaDobra(
   clicados: CampoClicado[],
   ativo: boolean,
 ): void {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!ativo || !pagina || !layout) return;
@@ -39,7 +39,7 @@ export function useAbaixoDaDobra(
         // `prefetchQuery` só busca o que falta ou o que um aviso do servidor invalidou —
         // e é isso que deixa o fim da página atualizado também depois do tempo real.
         // Falhar aqui não aparece em lugar nenhum: o cartão pede de novo ao aparecer.
-        await qc
+        await queryClient
           .prefetchQuery(consultaDoVisual(pagina, id, filtros, clicados, 'prefetch'))
           .catch(() => undefined);
       }
@@ -47,5 +47,5 @@ export function useAbaixoDaDobra(
     return () => {
       parou = true;
     };
-  }, [pagina, layout, filtros, clicados, ativo, qc]);
+  }, [pagina, layout, filtros, clicados, ativo, queryClient]);
 }

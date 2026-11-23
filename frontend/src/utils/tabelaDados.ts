@@ -60,18 +60,18 @@ export function escalasDaTabela(
   linhas: readonly Linha[],
 ): Map<number, number> {
   const mapa = new Map<number, number>();
-  colunas.forEach((c, i) => {
-    if (!ehMagnitude(c.nome ?? null, c.tipo)) return;
+  colunas.forEach((coluna, indice) => {
+    if (!ehMagnitude(coluna.nome ?? null, coluna.tipo)) return;
     let maior = 0;
     let menor = Number.POSITIVE_INFINITY;
     for (const linha of linhas) {
-      const v = linha[i];
-      if (typeof v !== 'number') continue;
-      const a = Math.abs(v);
-      if (a > maior) maior = a;
-      if (a < menor) menor = a;
+      const valor = linha[indice];
+      if (typeof valor !== 'number') continue;
+      const soma = Math.abs(valor);
+      if (soma > maior) maior = soma;
+      if (soma < menor) menor = soma;
     }
-    if (maior > 0 && menor !== maior) mapa.set(i, maior);
+    if (maior > 0 && menor !== maior) mapa.set(indice, maior);
   });
   return mapa;
 }

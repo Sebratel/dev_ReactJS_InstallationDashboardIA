@@ -22,13 +22,13 @@ export interface Formatado {
   vazio: boolean;
 }
 
-const nf = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
+const formatadorNumero = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
 const nfInt = new Intl.NumberFormat('pt-BR');
 // UTC para data pura e data/hora vinda do banco/snapshot: colunas `timestamp without time zone`
 // do Voalle/Power BI já são relógio de parede do Brasil e gravadas em UTC no snapshot
 // (mesma convenção do `df`, `dfHora` e `HOUR()` do DAX). Formatar em America/Sao_Paulo
 // subtraía 3h indevidamente (ex.: Slot Agenda 09:00 aparecendo como 06:00).
-const df = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' });
+const formatoData = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' });
 const dfhUtc = new Intl.DateTimeFormat('pt-BR', {
   dateStyle: 'short',
   timeStyle: 'short',
@@ -97,7 +97,7 @@ function formataData(valor: unknown): Formatado {
   // "10/08/2026" de "10/08/2026 09:08" no mesmo card.
   const soData =
     data.getUTCHours() === 0 && data.getUTCMinutes() === 0 && data.getUTCSeconds() === 0;
-  return comoNumero((soData ? df : dfhUtc).format(data));
+  return comoNumero((soData ? formatoData : dfhUtc).format(data));
 }
 
 function formataNumero(numero: number, casas: number | null | undefined): Formatado {
@@ -106,12 +106,14 @@ function formataNumero(numero: number, casas: number | null | undefined): Format
   // `5,25`. Não é só estética — o caractere a mais fazia o rótulo não caber na fatia
   // do gráfico e o número era descartado (ver `casasDoNumero`, no back).
   if (casas !== undefined && casas !== null) return comoNumero(comCasas(casas).format(numero));
-  return comoNumero(Number.isInteger(numero) ? nfInt.format(numero) : nf.format(numero));
+  return comoNumero(
+    Number.isInteger(numero) ? nfInt.format(numero) : formatadorNumero.format(numero),
+  );
 }
 
 /** Inteiro com separador de milhar — contagens de linha, totais, etc. */
-export function inteiro(n: number): string {
-  return nfInt.format(n);
+export function inteiro(numero: number): string {
+  return nfInt.format(numero);
 }
 
 /**
@@ -122,23 +124,23 @@ export function inteiro(n: number): string {
  * o certo. Um valor já em escala de percentual (> 1,5, como `45`) não é multiplicado de
  * novo: só recebe o sinal.
  */
-export function percentualDeRazao(v: unknown): string {
-  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
-  const escala = Math.abs(v) <= 1.5 ? v * 100 : v;
-  return `${nf.format(escala)}%`;
+export function percentualDeRazao(valor: unknown): string {
+  if (typeof valor !== 'number' || !Number.isFinite(valor)) return '—';
+  const escala = Math.abs(valor) <= 1.5 ? valor * 100 : valor;
+  return `${formatadorNumero.format(escala)}%`;
 }
 
 const nfDeCasas = new Map<number, Intl.NumberFormat>();
 function comCasas(casas: number): Intl.NumberFormat {
-  let f = nfDeCasas.get(casas);
-  if (!f) {
-    f = new Intl.NumberFormat('pt-BR', {
+  let formatoNumero = nfDeCasas.get(casas);
+  if (!formatoNumero) {
+    formatoNumero = new Intl.NumberFormat('pt-BR', {
       minimumFractionDigits: casas,
       maximumFractionDigits: casas,
     });
-    nfDeCasas.set(casas, f);
+    nfDeCasas.set(casas, formatoNumero);
   }
-  return f;
+  return formatoNumero;
 }
 
 /**
@@ -150,16 +152,16 @@ function comCasas(casas: number): Intl.NumberFormat {
  * `casas` vem do próprio formato: `0.00%` → 2, `0.0%` → 1 (o padrão, que era o único
  * comportamento até 16/11/2026).
  */
-export function razaoComoPercentual(v: unknown, casas = 1): string {
-  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
-  return `${comCasas(casas).format(v * 100)}%`;
+export function razaoComoPercentual(valor: unknown, casas = 1): string {
+  if (typeof valor !== 'number' || !Number.isFinite(valor)) return '—';
+  return `${comCasas(casas).format(valor * 100)}%`;
 }
 
 /** Data e hora de um ISO, para o carimbo de "dado de". */
 export function dataHora(iso: string | null): string {
   if (!iso) return '—';
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '—' : dfh.format(d);
+  const data = new Date(iso);
+  return Number.isNaN(data.getTime()) ? '—' : dfh.format(data);
 }
 
 /** A partir de quantos dias sem `npm run snapshot` o carimbo vira aviso.
@@ -170,21 +172,21 @@ export const LIMITE_DIAS_DADO_ATRASADO = 2;
 /** Dias desde um ISO até agora — null se a data faltar ou for inválida. */
 export function diasDesde(iso: string | null): number | null {
   if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return (Date.now() - d.getTime()) / 86_400_000;
+  const data = new Date(iso);
+  if (Number.isNaN(data.getTime())) return null;
+  return (Date.now() - data.getTime()) / 86_400_000;
 }
 
 /** "há 3min", "há 2h", "há 4d" — idade curta de um ISO, para a capa. */
 export function haQuanto(iso: string | null | undefined, agora: number = Date.now()): string {
   if (!iso) return '—';
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return '—';
-  const min = Math.max(0, Math.floor((agora - t) / 60_000));
+  const tempo = new Date(iso).getTime();
+  if (Number.isNaN(tempo)) return '—';
+  const min = Math.max(0, Math.floor((agora - tempo) / 60_000));
   if (min < 1) return 'agora';
   if (min < 60) return `há ${min}min`;
-  const h = Math.floor(min / 60);
-  return h < 24 ? `há ${h}h` : `há ${Math.floor(h / 24)}d`;
+  const altura = Math.floor(min / 60);
+  return altura < 24 ? `há ${altura}h` : `há ${Math.floor(altura / 24)}d`;
 }
 
 /**
@@ -193,10 +195,10 @@ export function haQuanto(iso: string | null | undefined, agora: number = Date.no
  * Uma página desta base leva de 40 ms a 104 minutos. "6240000 ms" é ilegível
  * exatamente no caso em que o número importa.
  */
-export function duracao(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)} ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`;
-  const min = Math.floor(ms / 60_000);
-  const seg = Math.round((ms % 60_000) / 1000);
+export function duracao(milissegundos: number): string {
+  if (milissegundos < 1000) return `${Math.round(milissegundos)} ms`;
+  if (milissegundos < 60_000) return `${(milissegundos / 1000).toFixed(1)} s`;
+  const min = Math.floor(milissegundos / 60_000);
+  const seg = Math.round((milissegundos % 60_000) / 1000);
   return `${min} min ${String(seg).padStart(2, '0')} s`;
 }

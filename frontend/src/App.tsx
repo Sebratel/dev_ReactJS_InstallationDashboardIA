@@ -16,8 +16,8 @@ export function App() {
   // Primeiro pergunta se há sessão (`GET /auth/sessao`, sempre 200): a tela de login não
   // dispara pedido nenhum que falhe. Depois, um 401 em QUALQUER consulta vira login — quem
   // fica sabendo é o `QueryCache` (`services/queryClient.ts`).
-  const logado = useSessaoStore((s) => s.logado);
-  const define = useSessaoStore((s) => s.define);
+  const logado = useSessaoStore((serie) => serie.logado);
+  const define = useSessaoStore((serie) => serie.define);
   useEffect(() => {
     void perguntaSessao().then(define);
   }, [define]);

@@ -103,8 +103,8 @@ export function avaliaSaudeQueries(
   dadoDeFallback?: string | null,
 ): EstadoAvisoSaude {
   if (queries && queries.length > 0) {
-    const falhas = queries.filter((q) => q.status === 'falhou');
-    const vencidas = queries.filter((q) => q.status === 'vencida');
+    const falhas = queries.filter((consulta) => consulta.status === 'falhou');
+    const vencidas = queries.filter((consulta) => consulta.status === 'vencida');
 
     // 1. Falha é a maior gravidade: impossível de ignorar
     if (falhas.length > 0) {
@@ -120,8 +120,8 @@ export function avaliaSaudeQueries(
     if (vencidas.length > 0) {
       let mensagem: string;
       const desde = vencidas
-        .map((q) => q.paradaDesde)
-        .filter((d): d is string => Boolean(d))
+        .map((consulta) => consulta.paradaDesde)
+        .filter((dados): dados is string => Boolean(dados))
         .sort()[0];
       if (desde) {
         // A régua é o intervalo do grupo, não dias (ACHADOS #160): "parado há 0,1 dia"

@@ -11,12 +11,16 @@ const SEPARADOR = ' - ';
 
 export function rotulosCurtos(textos: readonly string[]): string[] {
   if (textos.length < 2) return [...textos];
-  const partes = textos.map((t) => t.split(SEPARADOR).map((p) => p.trim()));
-  const emTodos = partes[0]!.filter((p) => p !== '' && partes.every((ps) => ps.includes(p)));
+  const partes = textos.map((tela) => tela.split(SEPARADOR).map((ponto) => ponto.trim()));
+  const emTodos = partes[0]!.filter(
+    (ponto) => ponto !== '' && partes.every((parte) => parte.includes(ponto)),
+  );
   if (emTodos.length === 0) return [...textos];
-  const curtos = partes.map((ps) => ps.filter((p) => !emTodos.includes(p)).join(SEPARADOR));
+  const curtos = partes.map((parte) =>
+    parte.filter((ponto) => !emTodos.includes(ponto)).join(SEPARADOR),
+  );
   // Se o corte apagar um valor inteiro, ou fizer dois valores ficarem iguais, não corta.
-  if (curtos.some((c) => c === '') || new Set(curtos).size !== new Set(textos).size)
+  if (curtos.some((coluna) => coluna === '') || new Set(curtos).size !== new Set(textos).size)
     return [...textos];
   return curtos;
 }

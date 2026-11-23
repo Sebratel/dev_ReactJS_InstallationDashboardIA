@@ -18,10 +18,13 @@ const COS_45 = 0.71;
 export function prefixoComum(partesPorCategoria: readonly (readonly string[])[]): number {
   if (partesPorCategoria.length <= 1) return 0;
   const minPartes = Math.min(...partesPorCategoria.map((x) => x.length));
-  let n = 0;
-  while (n < minPartes - 1 && partesPorCategoria.every((x) => x[n] === partesPorCategoria[0]![n]))
-    n += 1;
-  return n;
+  let numero = 0;
+  while (
+    numero < minPartes - 1 &&
+    partesPorCategoria.every((x) => x[numero] === partesPorCategoria[0]![numero])
+  )
+    numero += 1;
+  return numero;
 }
 
 /**
@@ -41,8 +44,8 @@ export function prefixoComum(partesPorCategoria: readonly (readonly string[])[])
 export function rotuloDoEixo(partes: readonly string[], rotulo: string, orcamento: number): string {
   const base = partes.length > 0 ? partes : [rotulo];
   let texto = base[base.length - 1] ?? '';
-  for (let k = base.length - 2; k >= 0; k -= 1) {
-    const tentativa = base[k] + '/' + texto;
+  for (let indiceSerie = base.length - 2; indiceSerie >= 0; indiceSerie -= 1) {
+    const tentativa = base[indiceSerie] + '/' + texto;
     if (tentativa.length > orcamento) break;
     texto = tentativa;
   }
@@ -162,12 +165,12 @@ export function caminhoDaSerie(
 ): string {
   const partes: string[] = [];
   let abriu = false;
-  valores.forEach((v, i) => {
-    if (v === null) {
+  valores.forEach((valor, indice) => {
+    if (valor === null) {
       abriu = false;
       return;
     }
-    partes.push(`${abriu ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`);
+    partes.push(`${abriu ? 'L' : 'M'}${x(indice).toFixed(1)} ${y(valor).toFixed(1)}`);
     abriu = true;
   });
   return partes.join(' ');
@@ -176,9 +179,9 @@ export function caminhoDaSerie(
 /** O índice do maior valor não nulo (o primeiro, no empate); `null` sem valor nenhum. */
 export function maiorIndice(valores: readonly (number | null)[]): number | null {
   let melhor: number | null = null;
-  valores.forEach((v, i) => {
-    if (v === null) return;
-    if (melhor === null || v > valores[melhor]!) melhor = i;
+  valores.forEach((valor, indice) => {
+    if (valor === null) return;
+    if (melhor === null || valor > valores[melhor]!) melhor = indice;
   });
   return melhor;
 }

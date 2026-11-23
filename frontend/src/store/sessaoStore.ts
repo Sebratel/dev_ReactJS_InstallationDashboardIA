@@ -27,9 +27,9 @@ export const useSessaoStore = create<SessaoState>((set) => ({
 /** Pergunta à API se há sessão. Falha de rede vale como "não" — o login tenta de novo. */
 export async function perguntaSessao(): Promise<boolean> {
   try {
-    const r = await fetch('/auth/sessao', { cache: 'no-store' });
-    const j = (await r.json()) as { logado?: unknown };
-    return j.logado === true;
+    const resposta = await fetch('/auth/sessao', { cache: 'no-store' });
+    const posicao = (await resposta.json()) as { logado?: unknown };
+    return posicao.logado === true;
   } catch {
     return false;
   }

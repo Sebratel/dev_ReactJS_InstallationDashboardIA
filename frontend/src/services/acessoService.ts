@@ -81,7 +81,7 @@ export interface MatrizDeAcesso {
 }
 
 async function chama<T = MatrizDeAcesso>(caminho: string, corpo?: unknown): Promise<T> {
-  const r = await fetch(
+  const resposta = await fetch(
     caminho,
     corpo === undefined
       ? undefined
@@ -91,13 +91,13 @@ async function chama<T = MatrizDeAcesso>(caminho: string, corpo?: unknown): Prom
           body: JSON.stringify(corpo),
         },
   );
-  const json: unknown = await r.json().catch(() => null);
-  if (!r.ok) {
+  const json: unknown = await resposta.json().catch(() => null);
+  if (!resposta.ok) {
     const erro =
       json && typeof json === 'object' && 'erro' in json
         ? String(json.erro)
         : 'Não foi possível concluir agora. Tente novamente.';
-    throw Object.assign(new Error(erro), { status: r.status });
+    throw Object.assign(new Error(erro), { status: resposta.status });
   }
   return json as T;
 }
@@ -152,16 +152,16 @@ export const pegaUsoDasTelas = (dias: 7 | 30 | 90) =>
   chama<ResumoDeUso>(`/api/admin/uso?dias=${dias}`);
 
 /** Um pedido do rascunho da aba PERMISSÕES (`utils/rascunhoDeAcessos.ts`) na rota dele. */
-export function aplicaOperacao(op: OperacaoDeAcesso): Promise<MatrizDeAcesso> {
-  switch (op.tipo) {
+export function aplicaOperacao(operacao: OperacaoDeAcesso): Promise<MatrizDeAcesso> {
+  switch (operacao.tipo) {
     case 'modo':
-      return defineModoDaTela(op.tela, op.modo);
+      return defineModoDaTela(operacao.tela, operacao.modo);
     case 'remove':
-      return removePessoa(op.email);
+      return removePessoa(operacao.email);
     case 'papel':
-      return definePapel(op.email, op.papel);
+      return definePapel(operacao.email, operacao.papel);
     case 'telas':
-      return defineTelasDaPessoa(op.email, op.telas);
+      return defineTelasDaPessoa(operacao.email, operacao.telas);
   }
 }
 

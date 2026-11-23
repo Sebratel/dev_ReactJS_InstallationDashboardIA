@@ -50,9 +50,9 @@ export function usePaginacaoLocal({
 
   /** Recebe um índice GLOBAL e decide se anda em memória ou busca outra fatia. */
   const vaiParaLinha = (linhaGlobal: number) => {
-    const de = deDaFatia ?? 0;
-    if (linhaGlobal >= de && linhaGlobal < de + linhasNaFatia) {
-      setInicioLocal(linhaGlobal - de);
+    const deslocamento = deDaFatia ?? 0;
+    if (linhaGlobal >= deslocamento && linhaGlobal < deslocamento + linhasNaFatia) {
+      setInicioLocal(linhaGlobal - deslocamento);
       return;
     }
     const novaFatia = janelaDeServidorPara(linhaGlobal);

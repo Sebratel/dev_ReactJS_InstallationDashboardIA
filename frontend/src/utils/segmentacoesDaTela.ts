@@ -18,8 +18,8 @@ export interface SegmentacoesDaTela {
  * BY, poucos valores e sempre visíveis (ver `SegmentacaoChips.tsx`). Casado por
  * tabela+coluna, não por página: é o mesmo padrão de `dataDaPagina`, não uma config nova.
  */
-const ehChipDeSolicitacao = (s: { tabela: string; coluna: string }): boolean =>
-  s.tabela === 'PROTOCOLOS GERAL' && s.coluna === 'TIPO DE PROTOCOLO';
+const ehChipDeSolicitacao = (serie: { tabela: string; coluna: string }): boolean =>
+  serie.tabela === 'PROTOCOLOS GERAL' && serie.coluna === 'TIPO DE PROTOCOLO';
 
 export function segmentacoesDaTela(
   /** As do layout (chegam antes) ou, sem elas, os visuais calculados. */
@@ -38,19 +38,20 @@ export function segmentacoesDaTela(
   // 20/10/2026). Hierarquia só se filtra pela árvore; se ela aparecer sem árvore, o
   // defeito é a página faltar em `filtros-padrao.ts` (há teste para isso).
   const todas = visuais.filter(
-    (v) =>
-      v.segmentacao &&
-      !v.segmentacao.niveis &&
+    (visual) =>
+      visual.segmentacao &&
+      !visual.segmentacao.niveis &&
       !(
         dataDaTela !== null &&
-        v.segmentacao.tabela === dataDaTela.tabela &&
-        v.segmentacao.coluna === dataDaTela.coluna
+        visual.segmentacao.tabela === dataDaTela.tabela &&
+        visual.segmentacao.coluna === dataDaTela.coluna
       ),
   );
-  const chips = todas.find((v) => ehChipDeSolicitacao(v.segmentacao!))?.segmentacao ?? null;
+  const chips =
+    todas.find((visual) => ehChipDeSolicitacao(visual.segmentacao!))?.segmentacao ?? null;
   const dropdowns = todas
-    .filter((v) => !ehChipDeSolicitacao(v.segmentacao!))
-    .map((v) => ({ id: v.id, spec: v.segmentacao! }));
+    .filter((visual) => !ehChipDeSolicitacao(visual.segmentacao!))
+    .map((visual) => ({ id: visual.id, spec: visual.segmentacao! }));
 
   // FILTRO SEM SEGMENTAÇÃO NA TELA É RECORTE INVISÍVEL.
   //
@@ -67,14 +68,19 @@ export function segmentacoesDaTela(
   // do controle que já o mostra.
   const comSlicer = new Set(
     todas.map(
-      (v) => `${v.segmentacao!.tabela}.${v.segmentacao!.coluna}.${v.segmentacao!.nivel ?? ''}`,
+      (visual) =>
+        `${visual.segmentacao!.tabela}.${visual.segmentacao!.coluna}.${visual.segmentacao!.nivel ?? ''}`,
     ),
   );
   const ocultos = filtros.filter(
-    (f) =>
-      f.valores.length > 0 &&
-      !comSlicer.has(`${f.tabela}.${f.coluna}.${f.nivel ?? ''}`) &&
-      !(dataDaTela !== null && f.tabela === dataDaTela.tabela && f.coluna === dataDaTela.coluna),
+    (filtro) =>
+      filtro.valores.length > 0 &&
+      !comSlicer.has(`${filtro.tabela}.${filtro.coluna}.${filtro.nivel ?? ''}`) &&
+      !(
+        dataDaTela !== null &&
+        filtro.tabela === dataDaTela.tabela &&
+        filtro.coluna === dataDaTela.coluna
+      ),
   );
 
   return { chips, dropdowns, ocultos };

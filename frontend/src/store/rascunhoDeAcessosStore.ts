@@ -18,7 +18,7 @@ type RascunhoState = {
 export const useRascunhoDeAcessos = create<RascunhoState>((set) => ({
   rascunho: RASCUNHO_VAZIO,
   pendentes: 0,
-  muda: (f) => set((s) => ({ rascunho: f(s.rascunho) })),
+  muda: (rascunhoAtual) => set((serie) => ({ rascunho: rascunhoAtual(serie.rascunho) })),
   conta: (pendentes) => set({ pendentes }),
   descarta: () => set({ rascunho: RASCUNHO_VAZIO }),
 }));

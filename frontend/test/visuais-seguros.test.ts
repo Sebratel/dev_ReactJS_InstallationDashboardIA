@@ -59,28 +59,30 @@ test('A4.2 - VisualPronto trata erro da API e ausência de dados sem quebrar', (
 });
 
 test('A4.3 - Card: guarda contra dados nulos e propriedades aninhadas ausentes', () => {
+  // O nome da variável não importa — a guarda, sim. O grupo e `\1` prendem o teste à
+  // propriedade ("quem recebe `visual.dados` é conferido antes do uso"), não a uma letra.
   assert.match(
     cardTsx,
-    /const d = visual\.dados as DadosDeCard \| undefined;[\s\S]*?if \(!d\) return null;/,
-    'Card.tsx deve validar se d existe antes de acessar propriedades',
+    /const (\w+) = visual\.dados as DadosDeCard \| undefined;[\s\S]*?if \(!\1\) return null;/,
+    'Card.tsx deve validar os dados antes de acessar propriedades',
   );
   assert.match(
     cardTsx,
-    /d\.origem\?\.kind/,
-    'Card.tsx deve usar optional chaining ao acessar d.origem.kind',
+    /\w+\.origem\?\.kind/,
+    'Card.tsx deve usar optional chaining ao acessar origem.kind',
   );
-  assert.match(cardTsx, /filtros\.length/, 'Card.tsx deve proteger acesso a d.filtros');
+  assert.match(cardTsx, /filtros\.length/, 'Card.tsx deve proteger acesso a filtros');
 });
 
 test('A4.4 - Grafico: guarda contra dados nulos, series e pontos ausentes', () => {
   assert.match(
     graficoTsx,
-    /d && d\.series && d\.pontos \? montaGrafico\(d\) : null/,
-    'Grafico.tsx deve conferir d.series e d.pontos antes de chamar montaGrafico',
+    /(\w+) && \1\.series && \1\.pontos\s+\?\s+montaGrafico\(\1\)\s+:\s+null/,
+    'Grafico.tsx deve conferir series e pontos antes de chamar montaGrafico',
   );
   assert.match(
     graficoTsx,
-    /if \(!d \|\| !g \|\| !gTudo\) \{[\s\S]*?<Cartao[\s\S]*?Sem dados disponíveis para o gráfico/,
+    /if \(!\w+ \|\| !\w+ \|\| !gTudo\) \{[\s\S]*?<Cartao[\s\S]*?Sem dados disponíveis para o gráfico/,
     'Grafico.tsx deve exibir Cartao de fallback quando dados ou gráfico estiverem ausentes',
   );
 });
@@ -88,7 +90,7 @@ test('A4.4 - Grafico: guarda contra dados nulos, series e pontos ausentes', () =
 test('A4.5 - Tabela: guarda contra dados nulos, colunas e linhas ausentes', () => {
   assert.match(
     tabelaTsx,
-    /if \(!d \|\| !d\.colunas \|\| !d\.linhas\) \{[\s\S]*?<Cartao[\s\S]*?Sem dados disponíveis para a tabela/,
+    /if \(!(\w+) \|\| !\1\.colunas \|\| !\1\.linhas\) \{[\s\S]*?<Cartao[\s\S]*?Sem dados disponíveis para a tabela/,
     'Tabela.tsx deve exibir Cartao de fallback quando colunas ou linhas estiverem ausentes',
   );
 });
@@ -96,7 +98,7 @@ test('A4.5 - Tabela: guarda contra dados nulos, colunas e linhas ausentes', () =
 test('A4.6 - Matriz: guarda contra dados nulos, colunas e linhas ausentes', () => {
   assert.match(
     matrizTsx,
-    /if \(!d \|\| !d\.colunas \|\| !d\.linhas\) \{[\s\S]*?<Cartao[\s\S]*?Sem dados disponíveis para a matriz/,
+    /if \(!(\w+) \|\| !\1\.colunas \|\| !\1\.linhas\) \{[\s\S]*?<Cartao[\s\S]*?Sem dados disponíveis para a matriz/,
     'Matriz.tsx deve exibir Cartao de fallback quando colunas ou linhas estiverem ausentes',
   );
 });
@@ -104,8 +106,12 @@ test('A4.6 - Matriz: guarda contra dados nulos, colunas e linhas ausentes', () =
 test('A4.7 - Formas alternativas (Rosca e RankingBarra) também têm guardas contra nulos', () => {
   assert.match(
     roscaTsx,
-    /if \(!d \|\| !d\.colunas \|\| !d\.linhas\)/,
-    'Rosca.tsx deve validar d.colunas e d.linhas',
+    /if \(!(\w+) \|\| !\1\.colunas \|\| !\1\.linhas\)/,
+    'Rosca.tsx deve validar colunas e linhas',
   );
-  assert.match(rankingBarraTsx, /if \(!d \|\| !gTudo\)/, 'RankingBarra.tsx deve validar d e gTudo');
+  assert.match(
+    rankingBarraTsx,
+    /if \(!\w+ \|\| !gTudo\)/,
+    'RankingBarra.tsx deve validar os dados e gTudo',
+  );
 });

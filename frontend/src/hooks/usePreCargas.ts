@@ -33,7 +33,7 @@ export function usePreCargas(
   filtros: FiltroDaTela[],
   clicados: CampoClicado[],
 ): PreCargas {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
 
   // FASE L5, R6 — a aba sob o cursor.
   const timeoutHover = useRef<number | null>(null);
@@ -54,10 +54,10 @@ export function usePreCargas(
         timeoutHover.current = null;
         // Prefetch é otimização: falhar aqui não pode aparecer em lugar nenhum visível.
         // O clique real tenta de novo e, se falhar, é ELE que mostra o erro.
-        preCarregaAbertura(qc, id, filtrosPadrao(id)).catch(() => undefined);
+        preCarregaAbertura(queryClient, id, filtrosPadrao(id)).catch(() => undefined);
       }, 60);
     },
-    [cancelaPrefetch, qc],
+    [cancelaPrefetch, queryClient],
   );
 
   // HOVER-PREFETCH DO CLIQUE — a mesma ideia, um nível mais fundo: a barra/categoria de
@@ -80,13 +80,15 @@ export function usePreCargas(
       if (timeoutHoverClique.current !== null) window.clearTimeout(timeoutHoverClique.current);
       timeoutHoverClique.current = window.setTimeout(() => {
         timeoutHoverClique.current = null;
-        const p = prever();
+        const filtro = prever();
         // A abertura e os visuais `sobDemanda` dela: só a abertura deixava o clique
         // esperando os caros (`preCarregaEstado`).
-        preCarregaEstado(qc, atual, layout, p.filtros, p.clicados).catch(() => undefined);
+        preCarregaEstado(queryClient, atual, layout, filtro.filtros, filtro.clicados).catch(
+          () => undefined,
+        );
       }, 150);
     },
-    [atual, layout, qc],
+    [atual, layout, queryClient],
   );
 
   const aoPreverAlvos = useCallback(

@@ -22,11 +22,11 @@ const ORDEM: readonly string[] = [
 
 export function ordenaTelas<T extends { id: string }>(telas: readonly T[]): T[] {
   const posicao = (id: string) => {
-    const i = ORDEM.indexOf(id);
-    return i < 0 ? ORDEM.length : i;
+    const indice = ORDEM.indexOf(id);
+    return indice < 0 ? ORDEM.length : indice;
   };
   // `sort` é estável: as que não estão na lista mantêm a ordem de chegada entre si.
-  return [...telas].sort((a, b) => posicao(a.id) - posicao(b.id));
+  return [...telas].sort((primeiro, segundo) => posicao(primeiro.id) - posicao(segundo.id));
 }
 
 /**

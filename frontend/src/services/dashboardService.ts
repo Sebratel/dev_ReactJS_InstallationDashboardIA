@@ -234,34 +234,43 @@ export function urlDaPagina(
   opcoes: OpcoesDePagina = {},
   clicados: readonly { tabela: string; coluna: string }[] = [],
 ): string {
-  const p = new URLSearchParams();
-  for (const f of filtros) {
-    if (f.valores.length === 0) continue;
-    p.append(
+  const parametros = new URLSearchParams();
+  for (const filtro of filtros) {
+    if (filtro.valores.length === 0) continue;
+    parametros.append(
       'filtro',
-      codificaFiltro({ tabela: f.tabela, coluna: f.coluna, valores: f.valores, nivel: f.nivel }),
+      codificaFiltro({
+        tabela: filtro.tabela,
+        coluna: filtro.coluna,
+        valores: filtro.valores,
+        nivel: filtro.nivel,
+      }),
     );
   }
   // Quais colunas nasceram de clique. É o que permite ao servidor auto-excluir o
   // filtro do visual que desenha aquela coluna, sem fazer o mesmo com o seletor —
   // ver `CampoClicado` em `rota.ts`.
-  for (const c of clicados) {
-    p.append('clicado', JSON.stringify({ tabela: c.tabela, coluna: c.coluna }));
+  for (const campoClicado of clicados) {
+    parametros.append(
+      'clicado',
+      JSON.stringify({ tabela: campoClicado.tabela, coluna: campoClicado.coluna }),
+    );
   }
-  if (opcoes.visual) p.append('visual', opcoes.visual);
-  for (const v of opcoes.visuais ?? []) p.append('visual', v);
-  if (opcoes.linhas) p.set('linhas', String(opcoes.linhas));
+  if (opcoes.visual) parametros.append('visual', opcoes.visual);
+  for (const visualAtual of opcoes.visuais ?? []) parametros.append('visual', visualAtual);
+  if (opcoes.linhas) parametros.set('linhas', String(opcoes.linhas));
   // `de=0` é o padrão da API e não precisa viajar; mandá-lo sujaria toda URL de
   // primeira janela. Só a partir da segunda o parâmetro diz alguma coisa.
-  if (opcoes.de) p.set('de', String(opcoes.de));
+  if (opcoes.de) parametros.set('de', String(opcoes.de));
   // Busca vazia também não viaja, e pela mesma razão mais uma: esta URL É a chave do
   // cache da tela (`paginasVistas`) e entra na chave do servidor. `?busca=` vazio
   // daria uma segunda chave para o mesmo pedido, e a abertura sem busca deixaria de
   // reaproveitar o que o aquecedor já calculou.
-  if (opcoes.busca) p.set('busca', opcoes.busca);
+  if (opcoes.busca) parametros.set('busca', opcoes.busca);
   // Idem: sem ordem escolhida, nenhum parâmetro — a chave tem de ser a da abertura.
-  if (opcoes.ordem) p.set('ordem', `${opcoes.ordem.coluna}:${opcoes.ordem.desc ? 'desc' : 'asc'}`);
-  return comConsulta(`/api/dashboards/${encodeURIComponent(id)}`, p);
+  if (opcoes.ordem)
+    parametros.set('ordem', `${opcoes.ordem.coluna}:${opcoes.ordem.desc ? 'desc' : 'asc'}`);
+  return comConsulta(`/api/dashboards/${encodeURIComponent(id)}`, parametros);
 }
 
 /**
@@ -280,10 +289,10 @@ export function urlDaPagina(
 export const TETO_DE_VALORES = 5000;
 
 export function urlDeValores(id: string, tabela: string, coluna: string, nivel?: string): string {
-  const p = new URLSearchParams({ tabela, coluna });
-  if (nivel) p.set('nivel', nivel);
-  p.set('teto', String(TETO_DE_VALORES));
-  return `/api/dashboards/${encodeURIComponent(id)}/valores?${p.toString()}`;
+  const parametros = new URLSearchParams({ tabela, coluna });
+  if (nivel) parametros.set('nivel', nivel);
+  parametros.set('teto', String(TETO_DE_VALORES));
+  return `/api/dashboards/${encodeURIComponent(id)}/valores?${parametros.toString()}`;
 }
 
 /**
@@ -320,17 +329,17 @@ export interface DependenciasDePedido {
   esperasMs?: readonly number[];
 }
 
-function dormeAbortavel(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((ok, falha) => {
+function dormeAbortavel(milissegundos: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((valido, falha) => {
     if (signal?.aborted) return falha(signal.reason);
     const aoAbortar = (): void => {
-      clearTimeout(t);
+      clearTimeout(tela);
       falha(signal!.reason);
     };
-    const t = setTimeout(() => {
+    const tela = setTimeout(() => {
       signal?.removeEventListener('abort', aoAbortar);
-      ok();
-    }, ms);
+      valido();
+    }, milissegundos);
     signal?.addEventListener('abort', aoAbortar, { once: true });
   });
 }

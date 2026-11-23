@@ -60,8 +60,8 @@ export interface Janela {
   totalSemBusca?: number;
 }
 
-export function podeVoltar(j: Janela): boolean {
-  return j.de > 0;
+export function podeVoltar(posicao: Janela): boolean {
+  return posicao.de > 0;
 }
 
 /**
@@ -71,12 +71,12 @@ export function podeVoltar(j: Janela): boolean {
  * curta as duas contas divergem, e a segunda ofereceria um "próxima" que devolve zero
  * linhas.
  */
-export function podeAvancar(j: Janela): boolean {
-  return j.de + j.mostradas < j.total;
+export function podeAvancar(posicao: Janela): boolean {
+  return posicao.de + posicao.mostradas < posicao.total;
 }
 
-export function proximoDe(j: Janela): number {
-  return podeAvancar(j) ? j.de + j.mostradas : j.de;
+export function proximoDe(posicao: Janela): number {
+  return podeAvancar(posicao) ? posicao.de + posicao.mostradas : posicao.de;
 }
 
 /**
@@ -86,8 +86,8 @@ export function proximoDe(j: Janela): number {
  * de 20 em 20 e a matriz continua andando de 200 em 200. Voltar por `j.mostradas`
  * seria tentador e errado — numa última janela curta (3 linhas) ele voltaria 3.
  */
-export function anteriorDe(j: Janela, passo: number = LINHAS_POR_JANELA): number {
-  return Math.max(0, j.de - passo);
+export function anteriorDe(posicao: Janela, passo: number = LINHAS_POR_JANELA): number {
+  return Math.max(0, posicao.de - passo);
 }
 
 /**
@@ -101,18 +101,19 @@ export function anteriorDe(j: Janela, passo: number = LINHAS_POR_JANELA): number
  * duas pedem reações opostas: uma é refinar o termo, a outra é conferir o filtro da
  * página.
  */
-export function rotuloDaJanela(j: Janela, formataInteiro: (n: number) => string): string {
+export function rotuloDaJanela(posicao: Janela, formataInteiro: (n: number) => string): string {
   const deQuantas =
-    j.totalSemBusca !== undefined && j.totalSemBusca !== j.total
-      ? ` de ${formataInteiro(j.totalSemBusca)}`
+    posicao.totalSemBusca !== undefined && posicao.totalSemBusca !== posicao.total
+      ? ` de ${formataInteiro(posicao.totalSemBusca)}`
       : '';
-  if (j.total === 0) {
-    return j.totalSemBusca !== undefined
-      ? `nenhuma das ${formataInteiro(j.totalSemBusca)} linhas`
+  if (posicao.total === 0) {
+    return posicao.totalSemBusca !== undefined
+      ? `nenhuma das ${formataInteiro(posicao.totalSemBusca)} linhas`
       : 'nenhuma linha';
   }
-  if (j.mostradas >= j.total) return `${formataInteiro(j.total)}${deQuantas} linhas`;
-  const primeira = j.de + 1;
-  const ultima = j.de + j.mostradas;
-  return `${formataInteiro(primeira)}–${formataInteiro(ultima)} de ${formataInteiro(j.total)}${deQuantas} linhas`;
+  if (posicao.mostradas >= posicao.total)
+    return `${formataInteiro(posicao.total)}${deQuantas} linhas`;
+  const primeira = posicao.de + 1;
+  const ultima = posicao.de + posicao.mostradas;
+  return `${formataInteiro(primeira)}–${formataInteiro(ultima)} de ${formataInteiro(posicao.total)}${deQuantas} linhas`;
 }

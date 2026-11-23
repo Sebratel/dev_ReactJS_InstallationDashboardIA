@@ -6,8 +6,8 @@ type CaminhoDeSessao = '/auth/firebase' | '/auth/google' | '/auth/interno';
 
 /** Mensagem de erro de uma resposta JSON de erro da API, com um genérico de
  *  reserva — mesmo formato que `pega()` já usa em `dashboardService.ts`. */
-async function erroDaResposta(r: Response): Promise<string> {
-  const corpo: unknown = await r.json().catch(() => null);
+async function erroDaResposta(resposta: Response): Promise<string> {
+  const corpo: unknown = await resposta.json().catch(() => null);
   if (corpo && typeof corpo === 'object' && 'erro' in corpo)
     return String((corpo as { erro: unknown }).erro);
   return 'Não foi possível entrar agora. Tente novamente.';
@@ -22,12 +22,12 @@ async function abreSessao(
   caminho: CaminhoDeSessao,
   corpo: Record<string, string>,
 ): Promise<string | null> {
-  const r = await fetch(caminho, {
+  const resposta = await fetch(caminho, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(corpo),
   });
-  return r.ok ? null : erroDaResposta(r);
+  return resposta.ok ? null : erroDaResposta(resposta);
 }
 
 export const abreSessaoFirebase = (idToken: string) => abreSessao('/auth/firebase', { idToken });

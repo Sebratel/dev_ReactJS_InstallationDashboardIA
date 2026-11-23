@@ -57,10 +57,12 @@ export const CARD_DATA = 'e3e8acb8ee46c4565d20';
 export const CARD_HORA = '1d10da9f7a3e9a66d8ab';
 
 export function valorDoCard(visuais: readonly VisualCalculado[], id: string): string {
-  const v = visuais.find((x) => x.id === id);
-  const d =
-    v && !v.erro && v.conteudo === 'card' ? (v.dados as DadosDeCard | undefined) : undefined;
-  return d ? formata(d.valor, d.tipoDoValor).texto : '—';
+  const visual = visuais.find((x) => x.id === id);
+  const dadosDoCard =
+    visual && !visual.erro && visual.conteudo === 'card'
+      ? (visual.dados as DadosDeCard | undefined)
+      : undefined;
+  return dadosDoCard ? formata(dadosDoCard.valor, dadosDoCard.tipoDoValor).texto : '—';
 }
 
 /**
@@ -86,25 +88,33 @@ export function situacaoDaFonte(
   saude: RespostaSaude | null,
   agora: number = Date.now(),
 ) {
-  const qs = (saude?.refresh?.queries ?? []).filter((q) => ids.includes(q.id));
-  if (qs.length === 0) return null;
-  const status = statusDoGrupo(qs);
+  const consultas = (saude?.refresh?.queries ?? []).filter((consulta) => ids.includes(consulta.id));
+  if (consultas.length === 0) return null;
+  const status = statusDoGrupo(consultas);
 
-  const doPoller = new Map((saude?.realtime?.poller?.porQuery ?? []).map((p) => [p.query, p]));
-  const grupos = new Map((saude?.agendador?.grupos ?? []).map((g) => [g.id, g.intervaloMinutos]));
-  const porQuery = qs.map((q) => {
-    const carga = q.ultimaCarga ? new Date(q.ultimaCarga).getTime() : NaN;
-    const p = doPoller.get(q.id);
-    const conferido = p?.confirmadoEm ? new Date(p.confirmadoEm).getTime() : NaN;
+  const doPoller = new Map(
+    (saude?.realtime?.poller?.porQuery ?? []).map((entrada) => [entrada.query, entrada]),
+  );
+  const grupos = new Map(
+    (saude?.agendador?.grupos ?? []).map((grupo) => [grupo.id, grupo.intervaloMinutos]),
+  );
+  const porQuery = consultas.map((consulta) => {
+    const carga = consulta.ultimaCarga ? new Date(consulta.ultimaCarga).getTime() : NaN;
+    const ponto = doPoller.get(consulta.id);
+    const conferido = ponto?.confirmadoEm ? new Date(ponto.confirmadoEm).getTime() : NaN;
     // Poll parado não dá frescor: a conferência só conta enquanto acompanha o intervalo.
-    const pollEmDia = !Number.isNaN(conferido) && agora - conferido <= 2 * p!.intervaloMs + 60_000;
-    const em = Math.max(Number.isNaN(carga) ? -Infinity : carga, pollEmDia ? conferido : -Infinity);
-    const grupo = q.grupo !== undefined ? grupos.get(q.grupo) : undefined;
+    const pollEmDia =
+      !Number.isNaN(conferido) && agora - conferido <= 2 * ponto!.intervaloMs + 60_000;
+    const instante = Math.max(
+      Number.isNaN(carga) ? -Infinity : carga,
+      pollEmDia ? conferido : -Infinity,
+    );
+    const grupo = consulta.grupo !== undefined ? grupos.get(consulta.grupo) : undefined;
     return {
-      em,
+      em: instante,
       pollEmDia,
-      proxima: q.proximaCarga ? new Date(q.proximaCarga).getTime() : NaN,
-      cadenciaMin: pollEmDia ? p!.intervaloMs / 60_000 : (grupo ?? null),
+      proxima: consulta.proximaCarga ? new Date(consulta.proximaCarga).getTime() : NaN,
+      cadenciaMin: pollEmDia ? ponto!.intervaloMs / 60_000 : (grupo ?? null),
     };
   });
 
@@ -113,7 +123,7 @@ export function situacaoDaFonte(
   // container), a query sem poll fica sem cadência, e o máximo das restantes dava "há 33min ·
   // a cada 30 s" — a cadência do poll ao lado da idade da carga.
   const cadencias = porQuery.map((x) => x.cadenciaMin);
-  const todas = cadencias.every((c): c is number => c !== null);
+  const todas = cadencias.every((cadencia): cadencia is number => cadencia !== null);
   return {
     status,
     idade: Number.isFinite(maisVelha) ? haQuanto(new Date(maisVelha).toISOString(), agora) : '—',
@@ -140,8 +150,11 @@ function proximaDaFamilia(
 }
 
 /** `10:51` no fuso de quem olha. */
-export function horaCurta(ms: number): string {
-  return new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+export function horaCurta(milissegundos: number): string {
+  return new Date(milissegundos).toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 /** `0.2` → `12 s`, `15` → `15 min`. Com o poll, a cadência de uma família pode ficar abaixo do minuto. */

@@ -58,8 +58,8 @@ export interface EstadoDaTela {
 
 /** O estado na URL de AGORA — ver o cabeçalho. */
 function agora() {
-  const r = leRota(window.location.search, window.location.pathname);
-  return { pagina: r.pagina, filtros: filtrosDaRota(r), clicados: r.clicados };
+  const rota = leRota(window.location.search, window.location.pathname);
+  return { pagina: rota.pagina, filtros: filtrosDaRota(rota), clicados: rota.clicados };
 }
 
 /**
@@ -77,11 +77,12 @@ export function aplicaClique(
 ): { filtros: FiltroDaTela[]; clicados: CampoClicado[] } {
   const depois = alternaAlvos(filtros, alvos, padrao);
   const aindaFiltradas = new Set(depois.filter((x) => x.valores.length > 0).map(chaveDeCampo));
-  const mapa = new Map(clicados.map((c) => [chaveDeCampo(c), c]));
-  for (const a of alvos) {
-    const k = chaveDeCampo(a);
-    if (aindaFiltradas.has(k)) mapa.set(k, { tabela: a.tabela, coluna: a.coluna });
-    else mapa.delete(k);
+  const mapa = new Map(clicados.map((campoClicado) => [chaveDeCampo(campoClicado), campoClicado]));
+  for (const alvo of alvos) {
+    const indiceSerie = chaveDeCampo(alvo);
+    if (aindaFiltradas.has(indiceSerie))
+      mapa.set(indiceSerie, { tabela: alvo.tabela, coluna: alvo.coluna });
+    else mapa.delete(indiceSerie);
   }
   return { filtros: depois, clicados: [...mapa.values()] };
 }
@@ -99,7 +100,9 @@ export function aplicaSeletor(
     filtros: aplicaSelecao(filtros, tabela, coluna, valores, nivel),
     // A escolha passou a ser do controle, e controle recorta tudo — inclusive o visual
     // que desenha a coluna. Deixar a marca faria o gráfico ignorar o próprio seletor.
-    clicados: clicados.filter((c) => chaveDeCampo(c) !== chaveDeCampo({ tabela, coluna })),
+    clicados: clicados.filter(
+      (campoClicado) => chaveDeCampo(campoClicado) !== chaveDeCampo({ tabela, coluna }),
+    ),
   };
 }
 
@@ -113,8 +116,16 @@ export function useEstadoDaTela(): EstadoDaTela {
   // abrindo, mas a página seguinte vai no parâmetro — com as duas na URL, o caminho
   // venceria (`leRota`) e trocar de aba não trocaria nada.
   const vai = useCallback(
-    (pagina: string, f: readonly FiltroDaTela[], c: readonly CampoClicado[], empilha: boolean) =>
-      navigate({ pathname: '/', search: escreveRota(pagina, f, c) }, { replace: !empilha }),
+    (
+      pagina: string,
+      filtro: readonly FiltroDaTela[],
+      campo: readonly CampoClicado[],
+      empilha: boolean,
+    ) =>
+      navigate(
+        { pathname: '/', search: escreveRota(pagina, filtro, campo) },
+        { replace: !empilha },
+      ),
     [navigate],
   );
 
@@ -122,38 +133,55 @@ export function useEstadoDaTela(): EstadoDaTela {
 
   const iniciaEm = useCallback(
     (id: string) => {
-      const r = leRota(window.location.search, window.location.pathname);
-      vai(id, r.filtros.length > 0 || r.limpo ? r.filtros : filtrosPadrao(id), r.clicados, false);
+      const rota = leRota(window.location.search, window.location.pathname);
+      vai(
+        id,
+        rota.filtros.length > 0 || rota.limpo ? rota.filtros : filtrosPadrao(id),
+        rota.clicados,
+        false,
+      );
     },
     [vai],
   );
 
   const mudaFiltro = useCallback(
     (tabela: string, coluna: string, valores: Valor[], nivel?: string | null) => {
-      const a = agora();
-      if (!a.pagina) return;
-      const d = aplicaSeletor(a.filtros, a.clicados, tabela, coluna, valores, nivel);
-      vai(a.pagina, d.filtros, d.clicados, false);
+      const filtroAtual = agora();
+      if (!filtroAtual.pagina) return;
+      const filtro = aplicaSeletor(
+        filtroAtual.filtros,
+        filtroAtual.clicados,
+        tabela,
+        coluna,
+        valores,
+        nivel,
+      );
+      vai(filtroAtual.pagina, filtro.filtros, filtro.clicados, false);
     },
     [vai],
   );
 
   const aoFiltrarAlvos = useCallback(
     (alvos: readonly AlvoDeFiltro[]) => {
-      const a = agora();
-      if (!a.pagina) return;
+      const filtroAtual = agora();
+      if (!filtroAtual.pagina) return;
       // O `filtrosPadrao` é o piso do desfazer — ver `alternaAlvos`.
-      const d = aplicaClique(a.filtros, a.clicados, alvos, filtrosPadrao(a.pagina));
-      vai(a.pagina, d.filtros, d.clicados, true);
+      const filtro = aplicaClique(
+        filtroAtual.filtros,
+        filtroAtual.clicados,
+        alvos,
+        filtrosPadrao(filtroAtual.pagina),
+      );
+      vai(filtroAtual.pagina, filtro.filtros, filtro.clicados, true);
     },
     [vai],
   );
 
   const limpaFiltros = useCallback(() => {
-    const a = agora();
-    if (!a.pagina) return;
+    const filtro = agora();
+    if (!filtro.pagina) return;
     // Lista vazia vira `limpo=1` na URL (`escreveRota`), e não o padrão da página.
-    vai(a.pagina, [], [], true);
+    vai(filtro.pagina, [], [], true);
   }, [vai]);
 
   return {

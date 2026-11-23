@@ -60,15 +60,15 @@ export interface FormaDoGrafico {
 }
 
 /** Cabem números nesta janela? Acima do teto, nenhum modo liga. */
-function cabem(f: FormaDoGrafico): boolean {
-  return f.nCategorias > 0 && f.nCategorias <= MAXIMO_COM_ROTULO;
+function cabem(filtro: FormaDoGrafico): boolean {
+  return filtro.nCategorias > 0 && filtro.nCategorias <= MAXIMO_COM_ROTULO;
 }
 
 /** Onde escrever o número das COLUNAS. */
-export function modoDeRotulo(f: FormaDoGrafico): ModoDeRotulo {
-  if (!cabem(f) || f.nAreas === 0) return 'nenhum';
-  if (f.percentual) return 'dentro';
-  if (f.nAreas === 1 || f.empilha) return 'categoria';
+export function modoDeRotulo(filtro: FormaDoGrafico): ModoDeRotulo {
+  if (!cabem(filtro) || filtro.nAreas === 0) return 'nenhum';
+  if (filtro.percentual) return 'dentro';
+  if (filtro.nAreas === 1 || filtro.empilha) return 'categoria';
   return 'fatia';
 }
 
@@ -80,8 +80,8 @@ export function modoDeRotulo(f: FormaDoGrafico): ModoDeRotulo {
  * mesmo espaço vertical. Na faceta a linha tem painel próprio e escala própria — o rótulo
  * de pico ali continua sendo a leitura certa.
  */
-export function rotulaTodosOsPontos(f: FormaDoGrafico): boolean {
-  return cabem(f) && !f.naFaceta && f.nAreas === 0 && f.nLinhas === 1;
+export function rotulaTodosOsPontos(filtro: FormaDoGrafico): boolean {
+  return cabem(filtro) && !filtro.naFaceta && filtro.nAreas === 0 && filtro.nLinhas === 1;
 }
 
 /**
@@ -90,7 +90,7 @@ export function rotulaTodosOsPontos(f: FormaDoGrafico): boolean {
  * Só para quem escreve ACIMA da marca. `dentro` escreve na fatia e não cobra nada — e
  * cobrar à toa tira altura do desenho numa tela em que a altura é o recurso escasso.
  */
-export function precisaDeMargemParaRotulo(f: FormaDoGrafico): boolean {
-  const modo = modoDeRotulo(f);
-  return modo === 'categoria' || modo === 'fatia' || rotulaTodosOsPontos(f);
+export function precisaDeMargemParaRotulo(filtro: FormaDoGrafico): boolean {
+  const modo = modoDeRotulo(filtro);
+  return modo === 'categoria' || modo === 'fatia' || rotulaTodosOsPontos(filtro);
 }

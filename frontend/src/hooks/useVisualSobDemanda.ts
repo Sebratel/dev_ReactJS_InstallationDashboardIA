@@ -53,8 +53,8 @@ export function consultaDoVisual(
   return {
     queryKey: chavesDeConsulta.pagina(pagina, urlDaPagina(pagina, filtros, opcoes, clicados)),
     queryFn: async ({ signal }: { signal: AbortSignal }): Promise<VisualCalculado> => {
-      const p = await pegaPagina(pagina, filtros, opcoes, signal, clicados, origem);
-      const achado = p.visuais.find((v) => v.id === visualId);
+      const ponto = await pegaPagina(pagina, filtros, opcoes, signal, clicados, origem);
+      const achado = ponto.visuais.find((visual) => visual.id === visualId);
       if (!achado) throw new Error('a resposta não trouxe este visual.');
       if (achado.erro) throw new Error(achado.erro);
       return achado;
@@ -68,14 +68,14 @@ export function useVisualSobDemanda(
   filtros: readonly FiltroDaTela[],
   clicados: readonly { tabela: string; coluna: string }[] = [],
 ): VisualSobDemanda {
-  const q = useQuery({
+  const visual = useQuery({
     ...consultaDoVisual(pagina, visualId, filtros, clicados),
     placeholderData: keepPreviousData,
   });
   return {
-    estado: q.isFetching ? 'carregando' : 'parado',
-    pronto: q.data ?? null,
-    erro: q.error ? textoDoErro(q.error) : null,
-    tentarDeNovo: () => void q.refetch(),
+    estado: visual.isFetching ? 'carregando' : 'parado',
+    pronto: visual.data ?? null,
+    erro: visual.error ? textoDoErro(visual.error) : null,
+    tentarDeNovo: () => void visual.refetch(),
   };
 }

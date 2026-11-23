@@ -66,6 +66,16 @@ export default tseslint.config(
       'max-depth': ['error', 3],
       'max-nested-callbacks': ['error', 3],
 
+      // **Nome de variável é documentação (23/11/2026).** `d`, `q`, `p`, `s`, `t` não
+      // dizem o que guardam, e quem lê seis meses depois tem de reconstruir o contexto
+      // inteiro para entender uma linha. O mínimo é 3 letras, com quatro exceções:
+      //   - `id`  — termo do domínio, usado assim em toda a API;
+      //   - `x`/`y` — coordenadas de SVG, onde a convenção matemática É o nome claro;
+      //   - `_`  — descarte proposital, a mesma convenção do `no-unused-vars` acima.
+      // `properties: 'never'` porque as CHAVES vêm do contrato da API (`d.de`, `p.p10`)
+      // e renomeá-las quebraria a resposta do servidor.
+      'id-length': ['error', { min: 3, exceptions: ['id', 'x', 'y', '_'], properties: 'never' }],
+
       // **`sonarjs/todo-tag` fica DESLIGADA de propósito.** A documentação e os
       // comentários deste repositório são em português (CLAUDE.md, regra 6), e a regra
       // marca a palavra "todo"/"TODO" do português — "TODO filtro da página", "todo
@@ -92,6 +102,10 @@ export default tseslint.config(
       'sonarjs/public-static-readonly': 'off',
       // `describe` > `it` > callback já são três: o teste respira um nível a mais.
       'max-nested-callbacks': ['error', 5],
+      // **Nome curto em teste é aceito.** O padrão de nomes vale para o código que vai a
+      // produção; num teste, `const u1 = usuario()` está a três linhas do uso e o nome
+      // do `test(...)` já diz o que está em jogo.
+      'id-length': 'off',
     },
   },
 );

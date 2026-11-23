@@ -51,24 +51,24 @@ export interface PessoaNaTela extends PessoaDeAcesso {
   mudou: boolean;
 }
 
-const mesmoConjunto = (a: readonly string[], b: readonly string[]) =>
-  a.length === b.length && a.every((x) => b.includes(x));
+const mesmoConjunto = (alvo: readonly string[], segundo: readonly string[]) =>
+  alvo.length === segundo.length && alvo.every((x) => segundo.includes(x));
 
-const semChave = <T>(o: Record<string, T>, k: string) => {
-  const { [k]: _, ...resto } = o;
+const semChave = <T>(opcao: Record<string, T>, indiceSerie: string) => {
+  const { [indiceSerie]: _, ...resto } = opcao;
   return resto;
 };
 
 /** A matriz como fica depois de salvar — o que a tela desenha. */
-export function matrizComRascunho(m: MatrizDeAcesso, r: RascunhoDeAcessos) {
-  const telas = m.telas.map((t) => ({
-    ...t,
-    modo: r.modos[t.id] ?? t.modo,
-    mudou: r.modos[t.id] !== undefined && r.modos[t.id] !== t.modo,
+export function matrizComRascunho(matriz: MatrizDeAcesso, rascunho: RascunhoDeAcessos) {
+  const telas = matriz.telas.map((tela) => ({
+    ...tela,
+    modo: rascunho.modos[tela.id] ?? tela.modo,
+    mudou: rascunho.modos[tela.id] !== undefined && rascunho.modos[tela.id] !== tela.modo,
   }));
-  const doBanco = m.pessoas.map((p) => ({ ...p, nova: false }));
-  const novas = r.novos
-    .filter((e) => !m.pessoas.some((p) => p.email === e))
+  const doBanco = matriz.pessoas.map((pessoa) => ({ ...pessoa, nova: false }));
+  const novas = rascunho.novos
+    .filter((emailNovo) => !matriz.pessoas.some((pessoa) => pessoa.email === emailNovo))
     .map((email) => ({
       email,
       papel: 'viewer' as Papel,
@@ -76,16 +76,16 @@ export function matrizComRascunho(m: MatrizDeAcesso, r: RascunhoDeAcessos) {
       telas: [] as string[],
       nova: true,
     }));
-  const pessoas: PessoaNaTela[] = [...doBanco, ...novas].map((p) => {
-    const papel = r.papeis[p.email] ?? p.papel;
-    const lista = r.telas[p.email] ?? p.telas;
-    const removida = r.removidos.includes(p.email);
+  const pessoas: PessoaNaTela[] = [...doBanco, ...novas].map((ponto) => {
+    const papel = rascunho.papeis[ponto.email] ?? ponto.papel;
+    const lista = rascunho.telas[ponto.email] ?? ponto.telas;
+    const removida = rascunho.removidos.includes(ponto.email);
     return {
-      ...p,
+      ...ponto,
       papel,
       telas: lista,
       removida,
-      mudou: p.nova || removida || papel !== p.papel || !mesmoConjunto(lista, p.telas),
+      mudou: ponto.nova || removida || papel !== ponto.papel || !mesmoConjunto(lista, ponto.telas),
     };
   });
   return { telas, pessoas };
@@ -96,16 +96,23 @@ export function matrizComRascunho(m: MatrizDeAcesso, r: RascunhoDeAcessos) {
  * quem sai, depois papel e abas de cada um. Uma diferença que já coincide com o banco
  * (outro admin fez o mesmo, ou a pessoa desmarcou o que marcou) não vira pedido.
  */
-export function operacoesDoRascunho(m: MatrizDeAcesso, r: RascunhoDeAcessos): OperacaoDeAcesso[] {
-  const noBanco = new Map(m.pessoas.map((pessoa) => [pessoa.email, pessoa]));
-  return [...mudancasDeModo(m, r), ...remocoes(r, noBanco), ...mudancasPorPessoa(r, noBanco)];
+export function operacoesDoRascunho(
+  matriz: MatrizDeAcesso,
+  rascunho: RascunhoDeAcessos,
+): OperacaoDeAcesso[] {
+  const noBanco = new Map(matriz.pessoas.map((pessoa) => [pessoa.email, pessoa]));
+  return [
+    ...mudancasDeModo(matriz, rascunho),
+    ...remocoes(rascunho, noBanco),
+    ...mudancasPorPessoa(rascunho, noBanco),
+  ];
 }
 
 /** As abas cujo modo (lista/todos) mudou. */
-function mudancasDeModo(m: MatrizDeAcesso, r: RascunhoDeAcessos): OperacaoDeAcesso[] {
+function mudancasDeModo(matriz: MatrizDeAcesso, rascunho: RascunhoDeAcessos): OperacaoDeAcesso[] {
   const operacoes: OperacaoDeAcesso[] = [];
-  for (const tela of m.telas) {
-    const modo = r.modos[tela.id];
+  for (const tela of matriz.telas) {
+    const modo = rascunho.modos[tela.id];
     if (modo !== undefined && modo !== tela.modo) {
       operacoes.push({ tipo: 'modo', tela: tela.id, modo });
     }
@@ -115,32 +122,32 @@ function mudancasDeModo(m: MatrizDeAcesso, r: RascunhoDeAcessos): OperacaoDeAces
 
 /** Quem sai — só quem existe no banco; remover quem nunca foi gravado não é pedido. */
 function remocoes(
-  r: RascunhoDeAcessos,
+  rascunho: RascunhoDeAcessos,
   noBanco: ReadonlyMap<string, { papel: Papel; telas: string[] }>,
 ): OperacaoDeAcesso[] {
-  return r.removidos
+  return rascunho.removidos
     .filter((email) => noBanco.has(email))
     .map((email): OperacaoDeAcesso => ({ tipo: 'remove', email }));
 }
 
 /** Papel e abas de cada pessoa que fica. */
 function mudancasPorPessoa(
-  r: RascunhoDeAcessos,
+  rascunho: RascunhoDeAcessos,
   noBanco: ReadonlyMap<string, { papel: Papel; telas: string[] }>,
 ): OperacaoDeAcesso[] {
-  const novos = r.novos.filter((email) => !noBanco.has(email));
+  const novos = rascunho.novos.filter((email) => !noBanco.has(email));
   const operacoes: OperacaoDeAcesso[] = [];
 
   for (const email of [...noBanco.keys(), ...novos]) {
-    if (r.removidos.includes(email)) continue;
+    if (rascunho.removidos.includes(email)) continue;
     const atual = noBanco.get(email) ?? { papel: 'viewer' as Papel, telas: [] as string[] };
 
-    const papel = r.papeis[email];
+    const papel = rascunho.papeis[email];
     if (papel !== undefined && papel !== atual.papel) {
       operacoes.push({ tipo: 'papel', email, papel });
     }
 
-    const telas = r.telas[email];
+    const telas = rascunho.telas[email];
     if (telas !== undefined && !mesmoConjunto(telas, atual.telas)) {
       operacoes.push({ tipo: 'telas', email, telas });
     }
@@ -149,98 +156,122 @@ function mudancasPorPessoa(
 }
 
 /** Tira do rascunho o que um pedido já gravou — para, se o seguinte falhar, sobrar só o resto. */
-export function semOperacao(r: RascunhoDeAcessos, op: OperacaoDeAcesso): RascunhoDeAcessos {
-  switch (op.tipo) {
+export function semOperacao(
+  rascunho: RascunhoDeAcessos,
+  operacao: OperacaoDeAcesso,
+): RascunhoDeAcessos {
+  switch (operacao.tipo) {
     case 'modo':
-      return { ...r, modos: semChave(r.modos, op.tela) };
+      return { ...rascunho, modos: semChave(rascunho.modos, operacao.tela) };
     case 'remove':
       return {
-        ...r,
-        removidos: r.removidos.filter((e) => e !== op.email),
-        papeis: semChave(r.papeis, op.email),
-        telas: semChave(r.telas, op.email),
+        ...rascunho,
+        removidos: rascunho.removidos.filter((emailRemovido) => emailRemovido !== operacao.email),
+        papeis: semChave(rascunho.papeis, operacao.email),
+        telas: semChave(rascunho.telas, operacao.email),
       };
     case 'papel':
-      return { ...r, papeis: semChave(r.papeis, op.email) };
+      return { ...rascunho, papeis: semChave(rascunho.papeis, operacao.email) };
     case 'telas':
-      return { ...r, telas: semChave(r.telas, op.email) };
+      return { ...rascunho, telas: semChave(rascunho.telas, operacao.email) };
   }
 }
 
 /** Em português, para a lista "o que vai mudar" ao lado do botão de salvar. */
-export function descreveOperacao(op: OperacaoDeAcesso, nomeDaTela: (id: string) => string): string {
-  switch (op.tipo) {
+export function descreveOperacao(
+  operacao: OperacaoDeAcesso,
+  nomeDaTela: (id: string) => string,
+): string {
+  switch (operacao.tipo) {
     case 'modo':
-      return op.modo === 'todos'
-        ? `${nomeDaTela(op.tela)}: aberta para todos`
-        : `${nomeDaTela(op.tela)}: só quem estiver marcado`;
+      return operacao.modo === 'todos'
+        ? `${nomeDaTela(operacao.tela)}: aberta para todos`
+        : `${nomeDaTela(operacao.tela)}: só quem estiver marcado`;
     case 'remove':
-      return `${op.email}: perde todos os acessos`;
+      return `${operacao.email}: perde todos os acessos`;
     case 'papel':
-      return `${op.email}: papel vira ${op.papel}`;
+      return `${operacao.email}: papel vira ${operacao.papel}`;
     case 'telas':
-      return op.telas.length === 0
-        ? `${op.email}: nenhuma aba`
-        : `${op.email}: ${op.telas.map(nomeDaTela).join(', ')}`;
+      return operacao.telas.length === 0
+        ? `${operacao.email}: nenhuma aba`
+        : `${operacao.email}: ${operacao.telas.map(nomeDaTela).join(', ')}`;
   }
 }
 
 // As edições — cada uma devolve o rascunho novo e APAGA a diferença quando o valor
 // pedido volta a ser o do banco, para "desfazer na mão" zerar o contador.
 
-export function comModo(m: MatrizDeAcesso, r: RascunhoDeAcessos, tela: string, modo: ModoDaTela) {
-  const doBanco = m.telas.find((t) => t.id === tela)?.modo;
-  return { ...r, modos: modo === doBanco ? semChave(r.modos, tela) : { ...r.modos, [tela]: modo } };
+export function comModo(
+  matriz: MatrizDeAcesso,
+  rascunho: RascunhoDeAcessos,
+  tela: string,
+  modo: ModoDaTela,
+) {
+  const doBanco = matriz.telas.find((telaAtual) => telaAtual.id === tela)?.modo;
+  return {
+    ...rascunho,
+    modos: modo === doBanco ? semChave(rascunho.modos, tela) : { ...rascunho.modos, [tela]: modo },
+  };
 }
 
-export function comPapel(m: MatrizDeAcesso, r: RascunhoDeAcessos, email: string, papel: Papel) {
-  const doBanco = m.pessoas.find((p) => p.email === email)?.papel ?? 'viewer';
+export function comPapel(
+  matriz: MatrizDeAcesso,
+  rascunho: RascunhoDeAcessos,
+  email: string,
+  papel: Papel,
+) {
+  const doBanco = matriz.pessoas.find((pessoa) => pessoa.email === email)?.papel ?? 'viewer';
   return {
-    ...r,
-    papeis: papel === doBanco ? semChave(r.papeis, email) : { ...r.papeis, [email]: papel },
+    ...rascunho,
+    papeis:
+      papel === doBanco ? semChave(rascunho.papeis, email) : { ...rascunho.papeis, [email]: papel },
   };
 }
 
 export function comTela(
-  m: MatrizDeAcesso,
-  r: RascunhoDeAcessos,
+  matriz: MatrizDeAcesso,
+  rascunho: RascunhoDeAcessos,
   email: string,
   tela: string,
   marcada: boolean,
 ) {
-  const doBanco = m.pessoas.find((p) => p.email === email)?.telas ?? [];
-  const antes = r.telas[email] ?? doBanco;
+  const doBanco = matriz.pessoas.find((pessoa) => pessoa.email === email)?.telas ?? [];
+  const antes = rascunho.telas[email] ?? doBanco;
   const depois = marcada
-    ? [...antes.filter((t) => t !== tela), tela]
-    : antes.filter((t) => t !== tela);
+    ? [...antes.filter((abaAnterior) => abaAnterior !== tela), tela]
+    : antes.filter((abaAnterior) => abaAnterior !== tela);
   return {
-    ...r,
+    ...rascunho,
     telas: mesmoConjunto(depois, doBanco)
-      ? semChave(r.telas, email)
-      : { ...r.telas, [email]: depois },
+      ? semChave(rascunho.telas, email)
+      : { ...rascunho.telas, [email]: depois },
   };
 }
 
-export function comPessoa(r: RascunhoDeAcessos, email: string): RascunhoDeAcessos {
-  const e = email.trim().toLowerCase();
-  if (e === '' || r.novos.includes(e)) return r;
-  return { ...r, novos: [...r.novos, e], removidos: r.removidos.filter((x) => x !== e) };
+export function comPessoa(rascunho: RascunhoDeAcessos, email: string): RascunhoDeAcessos {
+  const entrada = email.trim().toLowerCase();
+  if (entrada === '' || rascunho.novos.includes(entrada)) return rascunho;
+  return {
+    ...rascunho,
+    novos: [...rascunho.novos, entrada],
+    removidos: rascunho.removidos.filter((x) => x !== entrada),
+  };
 }
 
 /** A lixeira: quem é novo some do rascunho; quem está no banco alterna "vai sair". */
-export function alternaRemocao(m: MatrizDeAcesso, r: RascunhoDeAcessos, email: string) {
-  if (!m.pessoas.some((p) => p.email === email)) {
+export function alternaRemocao(matriz: MatrizDeAcesso, rascunho: RascunhoDeAcessos, email: string) {
+  if (!matriz.pessoas.some((pessoa) => pessoa.email === email)) {
     return {
-      ...r,
-      novos: r.novos.filter((e) => e !== email),
-      papeis: semChave(r.papeis, email),
-      telas: semChave(r.telas, email),
+      ...rascunho,
+      novos: rascunho.novos.filter((emailNovo) => emailNovo !== email),
+      papeis: semChave(rascunho.papeis, email),
+      telas: semChave(rascunho.telas, email),
     };
   }
   return {
-    ...r,
-    removidos: r.removidos.includes(email)
-      ? r.removidos.filter((e) => e !== email)
-      : [...r.removidos, email],
+    ...rascunho,
+    removidos: rascunho.removidos.includes(email)
+      ? rascunho.removidos.filter((emailRemovido) => emailRemovido !== email)
+      : [...rascunho.removidos, email],
   };
 }

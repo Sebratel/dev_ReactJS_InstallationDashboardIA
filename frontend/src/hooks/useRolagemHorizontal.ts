@@ -65,11 +65,11 @@ export function useRolagemHorizontal<T extends HTMLElement>(): {
   const ultima = useRef<string>('');
 
   const medir = useCallback(() => {
-    const no = ref.current;
+    const elemento = ref.current;
     const proximo =
-      no === null
+      elemento === null
         ? { esquerda: false, direita: false }
-        : calculaBordas(no.scrollLeft, no.clientWidth, no.scrollWidth);
+        : calculaBordas(elemento.scrollLeft, elemento.clientWidth, elemento.scrollWidth);
     const chave = `${String(proximo.esquerda)}|${String(proximo.direita)}`;
     if (chave === ultima.current) return;
     ultima.current = chave;
@@ -78,20 +78,20 @@ export function useRolagemHorizontal<T extends HTMLElement>(): {
 
   useLayoutEffect(medir);
   useEffect(() => {
-    const no = ref.current;
-    no?.addEventListener('scroll', medir, { passive: true });
+    const elemento = ref.current;
+    elemento?.addEventListener('scroll', medir, { passive: true });
     window.addEventListener('resize', medir);
     remedeQuandoAFonteChegar(medir);
     return () => {
-      no?.removeEventListener('scroll', medir);
+      elemento?.removeEventListener('scroll', medir);
       window.removeEventListener('resize', medir);
     };
   }, [medir]);
 
   const rola = useCallback((direcao: -1 | 1) => {
-    const no = ref.current;
-    if (no === null) return;
-    no.scrollBy({ left: direcao * passoDeRolagem(no.clientWidth), behavior: 'smooth' });
+    const elemento = ref.current;
+    if (elemento === null) return;
+    elemento.scrollBy({ left: direcao * passoDeRolagem(elemento.clientWidth), behavior: 'smooth' });
   }, []);
 
   return { ref, bordas, rola };

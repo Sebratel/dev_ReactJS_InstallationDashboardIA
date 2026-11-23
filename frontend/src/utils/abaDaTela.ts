@@ -104,6 +104,6 @@ export function tituloDaAba(
     const extra = opcoes.abasExtras.find((aba) => aba.id === opcoes.abaAberta);
     return extra?.rotulo ?? extra?.nome ?? 'Insights';
   }
-  const pagina = opcoes.paginasDoRelatorio.find((p) => p.id === opcoes.abaAberta);
+  const pagina = opcoes.paginasDoRelatorio.find((ponto) => ponto.id === opcoes.abaAberta);
   return pagina?.nome ?? pagina?.rotulo ?? 'Instalação';
 }

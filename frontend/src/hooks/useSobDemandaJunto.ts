@@ -19,14 +19,16 @@ export function useSobDemandaJunto(
   clicados: CampoClicado[],
   ids: readonly string[],
 ): void {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
   const assinatura = ids.join('\n');
 
   useEffect(() => {
     if (!pagina || assinatura === '') return;
     for (const id of assinatura.split('\n')) {
       // Interativo (sem `origem`): é a resposta do clique que acabou de acontecer.
-      qc.prefetchQuery(consultaDoVisual(pagina, id, filtros, clicados)).catch(() => undefined);
+      queryClient
+        .prefetchQuery(consultaDoVisual(pagina, id, filtros, clicados))
+        .catch(() => undefined);
     }
-  }, [pagina, filtros, clicados, assinatura, qc]);
+  }, [pagina, filtros, clicados, assinatura, queryClient]);
 }

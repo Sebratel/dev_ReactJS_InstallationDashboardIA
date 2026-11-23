@@ -103,9 +103,9 @@ export function DashboardPage() {
   const layout = layoutQ.data ?? null;
   const paginaQ = usePaginaAberta(paginaDoDado, layoutQ.data, filtros, clicados);
   const saude = useSaude().data ?? null;
-  const eu = useEu().data ?? null;
+  const usuarioAtual = useEu().data ?? null;
   const pendentes = useRascunhoDeAcessos((rascunho) => rascunho.pendentes);
-  const podeGerir = eu?.podeGerir === true;
+  const podeGerir = usuarioAtual?.podeGerir === true;
 
   // As abas fora do relatório, na ordem em que aparecem à direita da faixa. A de
   // Configurações sai do papel (admin/dev) e vai por ÚLTIMO, encostada na direita, com a
@@ -113,12 +113,12 @@ export function DashboardPage() {
   // URL continua `permissoes`: link e favorito antigos seguem abrindo a mesma tela.
   const abasExtras = useMemo(
     () => [
-      ...(eu?.abasExtras ?? []).map((aba) => ({
+      ...(usuarioAtual?.abasExtras ?? []).map((aba) => ({
         id: aba.id,
         rotulo: aba.nome,
         ...(ICONE_DA_ABA[aba.id] ? { icone: ICONE_DA_ABA[aba.id] } : {}),
       })),
-      ...(eu?.podeGerir
+      ...(usuarioAtual?.podeGerir
         ? [
             {
               id: ABA_PERMISSOES,
@@ -129,7 +129,7 @@ export function DashboardPage() {
           ]
         : []),
     ],
-    [eu?.podeGerir, eu?.abasExtras, pendentes],
+    [usuarioAtual?.podeGerir, usuarioAtual?.abasExtras, pendentes],
   );
 
   const liberada = abaLiberada(especieDaAba, {
@@ -219,7 +219,7 @@ export function DashboardPage() {
 
   // Logado, mas nenhuma aba liberada — o acesso nega por padrão (`permissoes.ts`).
   if (dashboardsQ.data && paginas.length === 0) {
-    return <SemAcesso usuario={eu?.usuario ?? null} aoSair={encerraSessao} />;
+    return <SemAcesso usuario={usuarioAtual?.usuario ?? null} aoSair={encerraSessao} />;
   }
 
   return (
@@ -234,9 +234,9 @@ export function DashboardPage() {
       abasExtras={abasExtras}
       aoSair={encerraSessao}
       titulo={titulo}
-      usuario={eu?.usuario}
-      nome={eu?.nome}
-      foto={eu?.foto}
+      usuario={usuarioAtual?.usuario}
+      nome={usuarioAtual?.nome}
+      foto={usuarioAtual?.foto}
       dadoDe={paginaCalculada?.dadoDe ?? null}
       avisoSaude={avisoSaude}
       ultimaAtualizacaoRealtime={horaRealtime}

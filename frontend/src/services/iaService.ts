@@ -72,19 +72,27 @@ export function urlDeInsightsVisual(
   filtros: readonly FiltroDaTela[] = [],
   clicados: readonly { tabela: string; coluna: string }[] = [],
 ): string {
-  const p = new URLSearchParams();
-  for (const f of filtros) {
-    if (f.valores.length === 0) continue;
-    p.append(
+  const parametros = new URLSearchParams();
+  for (const filtro of filtros) {
+    if (filtro.valores.length === 0) continue;
+    parametros.append(
       'filtro',
-      codificaFiltro({ tabela: f.tabela, coluna: f.coluna, valores: f.valores, nivel: f.nivel }),
+      codificaFiltro({
+        tabela: filtro.tabela,
+        coluna: filtro.coluna,
+        valores: filtro.valores,
+        nivel: filtro.nivel,
+      }),
     );
   }
-  for (const c of clicados) {
-    p.append('clicado', JSON.stringify({ tabela: c.tabela, coluna: c.coluna }));
+  for (const campoClicado of clicados) {
+    parametros.append(
+      'clicado',
+      JSON.stringify({ tabela: campoClicado.tabela, coluna: campoClicado.coluna }),
+    );
   }
   const caminho = `/api/dashboards/${encodeURIComponent(pagina)}/insights/${encodeURIComponent(visualId)}`;
-  return comConsulta(caminho, p);
+  return comConsulta(caminho, parametros);
 }
 
 export async function pedeInsightsDoVisual(

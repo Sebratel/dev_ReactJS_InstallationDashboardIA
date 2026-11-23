@@ -70,10 +70,11 @@ export function useAlturaMedida<T extends HTMLElement>(nome: string): React.RefO
   const ultima = useRef<number>(-1);
 
   const medir = useCallback(() => {
-    const px = ref.current === null ? 0 : Math.round(ref.current.getBoundingClientRect().height);
-    if (px === ultima.current) return;
-    ultima.current = px;
-    document.documentElement.style.setProperty(nome, `${px}px`);
+    const pixels =
+      ref.current === null ? 0 : Math.round(ref.current.getBoundingClientRect().height);
+    if (pixels === ultima.current) return;
+    ultima.current = pixels;
+    document.documentElement.style.setProperty(nome, `${pixels}px`);
   }, [nome]);
 
   useLayoutEffect(medir);
@@ -134,9 +135,9 @@ function utilEmPx(): number {
   sonda.style.visibility = 'hidden';
   sonda.style.height = 'var(--util)';
   document.body.appendChild(sonda);
-  const px = Number.parseFloat(getComputedStyle(sonda).height);
+  const pixels = Number.parseFloat(getComputedStyle(sonda).height);
   sonda.remove();
-  return px;
+  return pixels;
 }
 
 export interface AlturasDeFaixa {
@@ -164,8 +165,8 @@ export function calculaAlturasDeFaixa(
 ): AlturasDeFaixa | null {
   if (nGrafico + nTabela + nMatriz === 0 || !Number.isFinite(utilPx)) return null;
 
-  const alturaDoTipo = (n: number, fracao: number, [piso, teto]: readonly [number, number]) =>
-    n === 0 ? piso : Math.round(Math.min(teto, Math.max(piso, (utilPx * fracao) / n)));
+  const alturaDoTipo = (numero: number, fracao: number, [piso, teto]: readonly [number, number]) =>
+    numero === 0 ? piso : Math.round(Math.min(teto, Math.max(piso, (utilPx * fracao) / numero)));
   return {
     grafico: alturaDoTipo(nGrafico, FRACAO_POOL.grafico, PISO_TETO_FAIXA.grafico),
     tabela: alturaDoTipo(nTabela, FRACAO_POOL.tabela, PISO_TETO_FAIXA.tabela),
@@ -194,8 +195,8 @@ export interface FaixaContavel {
  * e fica fora desta fase — ver o plano.
  */
 export function contaFaixasLargasPorAltura(faixas: readonly FaixaContavel[]): AlturasDeFaixa {
-  const largas = faixas.filter((f) => f.colunas.length === 1);
-  const conta = (altura: string) => largas.filter((f) => f.altura === altura).length;
+  const largas = faixas.filter((faixa) => faixa.colunas.length === 1);
+  const conta = (altura: string) => largas.filter((faixa) => faixa.altura === altura).length;
   return { grafico: conta('grafico'), tabela: conta('tabela'), matriz: conta('matriz') };
 }
 
@@ -305,22 +306,24 @@ export function useEspacoSemVisual<T extends HTMLElement>(
   const medir = useCallback(() => {
     let antes = 0;
     let entre = 0;
-    const no = ref.current;
-    const area = no?.closest('main.area') ?? null;
-    if (no !== null && area !== null) {
-      const cartoes = [...no.querySelectorAll('.cartao')].map((n) => n.getBoundingClientRect());
+    const noAtual = ref.current;
+    const area = noAtual?.closest('main.area') ?? null;
+    if (noAtual !== null && area !== null) {
+      const cartoes = [...noAtual.querySelectorAll('.cartao')].map((elemento) =>
+        elemento.getBoundingClientRect(),
+      );
       const topoConteudo =
         area.getBoundingClientRect().top + parseFloat(getComputedStyle(area).paddingTop);
-      const primeiro = cartoes[0] ?? no.getBoundingClientRect();
+      const primeiro = cartoes[0] ?? noAtual.getBoundingClientRect();
       antes = Math.max(0, Math.round(primeiro.top - topoConteudo));
 
       // O primeiro par EMPILHADO, e não o primeiro par: os compactos ficam lado a lado
       // e a distância entre dois deles é horizontal, não custa altura nenhuma.
-      for (let i = 1; i < cartoes.length; i++) {
-        const a = cartoes[i - 1]!,
-          b = cartoes[i]!;
-        if (b.top >= a.bottom - 1) {
-          entre = Math.max(0, Math.round(b.top - a.bottom));
+      for (let indice = 1; indice < cartoes.length; indice++) {
+        const medida = cartoes[indice - 1]!,
+          retangulo = cartoes[indice]!;
+        if (retangulo.top >= medida.bottom - 1) {
+          entre = Math.max(0, Math.round(retangulo.top - medida.bottom));
           break;
         }
       }
