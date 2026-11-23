@@ -21,6 +21,19 @@ export function ultimoAcessoNaTela(
 ): { texto: string; tom: TomDeSelo } {
   const dias = diasSemAcesso(iso, agora);
   if (dias === null) return { texto: 'nunca', tom: 'apagado' };
-  const texto = dias === 0 ? 'hoje' : dias === 1 ? 'ontem' : `há ${dias} dias`;
-  return { texto, tom: dias >= DIAS_ALERTA ? 'ruim' : dias >= DIAS_ATENCAO ? 'neutro' : 'ok' };
+  return { texto: textoDaAusencia(dias), tom: tomDaAusencia(dias) };
+}
+
+/** "hoje", "ontem" ou "há N dias". */
+function textoDaAusencia(dias: number): string {
+  if (dias === 0) return 'hoje';
+  if (dias === 1) return 'ontem';
+  return `há ${dias} dias`;
+}
+
+/** A cor do selo: quanto mais tempo sem entrar, mais grave. */
+function tomDaAusencia(dias: number): TomDeSelo {
+  if (dias >= DIAS_ALERTA) return 'ruim';
+  if (dias >= DIAS_ATENCAO) return 'neutro';
+  return 'ok';
 }

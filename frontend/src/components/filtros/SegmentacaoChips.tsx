@@ -33,6 +33,13 @@ const CHIP =
   'inline-flex h-[24px] flex-none items-center rounded-full border-pbi-borda px-[10px] py-0 text-[11.5px] whitespace-nowrap';
 const HOVER = 'hover:border-pbi-primary-texto hover:text-pbi-primary-texto';
 
+/** O que aparece no lugar dos chips enquanto eles não existem. */
+function ChipsOuAviso({ erro, vazio }: { erro: string | null; vazio: boolean }) {
+  if (erro) return <Nota>não deu para carregar: {erro}</Nota>;
+  if (vazio) return <Nota>carregando…</Nota>;
+  return null;
+}
+
 export function SegmentacaoChips(props: {
   pagina: string;
   spec: SegmentacaoSpec;
@@ -91,33 +98,28 @@ export function SegmentacaoChips(props: {
         aria-label={rotuloDeCampo(spec.rotulo)}
         ref={fileiraRef}
       >
-        {erro ? (
-          <Nota>não deu para carregar: {erro}</Nota>
-        ) : opcoes === null ? (
-          <Nota>carregando…</Nota>
-        ) : (
-          opcoes.map((o, i) => {
-            const marcado = props.selecao.some((x) => Object.is(x, o.valor));
-            return (
-              <button
-                key={i}
-                type="button"
-                className={cn(
-                  CHIP,
-                  marcado
-                    ? 'border-pbi-primary-texto bg-pbi-primary-soft font-semibold text-pbi-primary-texto'
-                    : cn('bg-pbi-superficie text-pbi-ink', HOVER),
-                )}
-                aria-pressed={marcado}
-                onClick={() => alterna(o.valor)}
-                onMouseEnter={() => props.aoPrever?.(proxima(o.valor))}
-                title={completos[i]}
-              >
-                {curtos[i]}
-              </button>
-            );
-          })
-        )}
+        <ChipsOuAviso erro={erro} vazio={opcoes === null} />
+        {opcoes?.map((o, i) => {
+          const marcado = props.selecao.some((x) => Object.is(x, o.valor));
+          return (
+            <button
+              key={i}
+              type="button"
+              className={cn(
+                CHIP,
+                marcado
+                  ? 'border-pbi-primary-texto bg-pbi-primary-soft font-semibold text-pbi-primary-texto'
+                  : cn('bg-pbi-superficie text-pbi-ink', HOVER),
+              )}
+              aria-pressed={marcado}
+              onClick={() => alterna(o.valor)}
+              onMouseEnter={() => props.aoPrever?.(proxima(o.valor))}
+              title={completos[i]}
+            >
+              {curtos[i]}
+            </button>
+          );
+        })}
         {props.selecao.length > 0 ? (
           <button
             type="button"

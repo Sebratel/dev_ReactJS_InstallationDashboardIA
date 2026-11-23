@@ -66,9 +66,16 @@ export function descreveRegistro(r: RegistroDeAuditoria): string {
     const corpo = diffDeAbas(antes ?? [], depois ?? []);
     return `${r.por} ${acao} ${r.alvo ?? ''} (${corpo})`;
   }
-  const curto = (v: string | null) => (v === null ? '—' : v.length > 80 ? `${v.slice(0, 77)}…` : v);
+  // Valor cru do registro, encurtado: a linha do histórico é uma só.
+  const curto = (valor: string | null) => {
+    if (valor === null) return '—';
+    return valor.length > LIMITE_DO_VALOR ? `${valor.slice(0, LIMITE_DO_VALOR - 3)}…` : valor;
+  };
   return `${r.por} ${acao} ${r.alvo ?? ''} (${curto(r.antes)} → ${curto(r.depois)})`;
 }
+
+/** Quanto de um valor cru cabe na linha do histórico antes das reticências. */
+const LIMITE_DO_VALOR = 80;
 
 export function HistoricoDeAcessos() {
   const [filtro, setFiltro] = useState('');

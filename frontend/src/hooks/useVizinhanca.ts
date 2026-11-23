@@ -67,21 +67,25 @@ export function useVizinhanca(
     if (!ativo || !pagina || !layout) return;
     if (!window.matchMedia('(pointer: fine)').matches) return;
     let parou = false;
+    /** Os valores já no cache desta segmentação — vazio quando ela não serve. */
+    const valoresNoCache = (segmentacao: (typeof segsRef.current)[number]) => {
+      if (segmentacao.nivel || segmentacao.naoFiltra) return [];
+      const cacheados = qc.getQueryData<ValoresDeColuna>(
+        chavesDeConsulta.valores(pagina, segmentacao.tabela, segmentacao.coluna, segmentacao.nivel),
+      );
+      if (!cacheados || cacheados.cortado || cacheados.valores.length > LIMITE) return [];
+      const semData = cacheados.valores.filter((valor) => valor.tipo !== 'date');
+      return [
+        {
+          tabela: segmentacao.tabela,
+          coluna: segmentacao.coluna,
+          valores: semData.map((valor) => valor.valor),
+        },
+      ];
+    };
+
     const t = window.setTimeout(async () => {
-      const comValores: SegmentacaoComValores[] = segsRef.current.flatMap((s) => {
-        if (s.nivel || s.naoFiltra) return [];
-        const d = qc.getQueryData<ValoresDeColuna>(
-          chavesDeConsulta.valores(pagina, s.tabela, s.coluna, s.nivel),
-        );
-        if (!d || d.cortado || d.valores.length > LIMITE) return [];
-        return [
-          {
-            tabela: s.tabela,
-            coluna: s.coluna,
-            valores: d.valores.filter((v) => v.tipo !== 'date').map((v) => v.valor),
-          },
-        ];
-      });
+      const comValores: SegmentacaoComValores[] = segsRef.current.flatMap(valoresNoCache);
       // O período primeiro: era o clique mais lento do teste (até 32 s), e o mais comum.
       const data = dataDaPagina(pagina);
       const datas = data

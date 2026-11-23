@@ -21,6 +21,7 @@ import {
   type PaginaCalculada,
 } from '../services/dashboardService.ts';
 import { idsIniciais } from '../utils/cargaProgressiva.ts';
+import { textoDoErro } from '../utils/erroDaTela.ts';
 import { consultaDoVisual } from './useVisualSobDemanda.ts';
 
 type Clicados = readonly { tabela: string; coluna: string }[];
@@ -174,6 +175,6 @@ export function useValoresDaSegmentacao(
   return {
     opcoes: q.data?.valores ?? null,
     cortado: q.data?.cortado ?? false,
-    erro: q.error ? (q.error instanceof Error ? q.error.message : String(q.error)) : null,
+    erro: q.error ? textoDoErro(q.error) : null,
   };
 }

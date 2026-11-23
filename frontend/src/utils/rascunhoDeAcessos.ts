@@ -97,26 +97,55 @@ export function matrizComRascunho(m: MatrizDeAcesso, r: RascunhoDeAcessos) {
  * (outro admin fez o mesmo, ou a pessoa desmarcou o que marcou) não vira pedido.
  */
 export function operacoesDoRascunho(m: MatrizDeAcesso, r: RascunhoDeAcessos): OperacaoDeAcesso[] {
-  const ops: OperacaoDeAcesso[] = [];
-  for (const t of m.telas) {
-    const modo = r.modos[t.id];
-    if (modo !== undefined && modo !== t.modo) ops.push({ tipo: 'modo', tela: t.id, modo });
+  const noBanco = new Map(m.pessoas.map((pessoa) => [pessoa.email, pessoa]));
+  return [...mudancasDeModo(m, r), ...remocoes(r, noBanco), ...mudancasPorPessoa(r, noBanco)];
+}
+
+/** As abas cujo modo (lista/todos) mudou. */
+function mudancasDeModo(m: MatrizDeAcesso, r: RascunhoDeAcessos): OperacaoDeAcesso[] {
+  const operacoes: OperacaoDeAcesso[] = [];
+  for (const tela of m.telas) {
+    const modo = r.modos[tela.id];
+    if (modo !== undefined && modo !== tela.modo) {
+      operacoes.push({ tipo: 'modo', tela: tela.id, modo });
+    }
   }
-  const noBanco = new Map(m.pessoas.map((p) => [p.email, p]));
-  for (const email of r.removidos) {
-    if (noBanco.has(email)) ops.push({ tipo: 'remove', email });
-  }
-  const emails = [...noBanco.keys(), ...r.novos.filter((e) => !noBanco.has(e))];
-  for (const email of emails) {
+  return operacoes;
+}
+
+/** Quem sai — só quem existe no banco; remover quem nunca foi gravado não é pedido. */
+function remocoes(
+  r: RascunhoDeAcessos,
+  noBanco: ReadonlyMap<string, { papel: Papel; telas: string[] }>,
+): OperacaoDeAcesso[] {
+  return r.removidos
+    .filter((email) => noBanco.has(email))
+    .map((email): OperacaoDeAcesso => ({ tipo: 'remove', email }));
+}
+
+/** Papel e abas de cada pessoa que fica. */
+function mudancasPorPessoa(
+  r: RascunhoDeAcessos,
+  noBanco: ReadonlyMap<string, { papel: Papel; telas: string[] }>,
+): OperacaoDeAcesso[] {
+  const novos = r.novos.filter((email) => !noBanco.has(email));
+  const operacoes: OperacaoDeAcesso[] = [];
+
+  for (const email of [...noBanco.keys(), ...novos]) {
     if (r.removidos.includes(email)) continue;
     const atual = noBanco.get(email) ?? { papel: 'viewer' as Papel, telas: [] as string[] };
+
     const papel = r.papeis[email];
-    if (papel !== undefined && papel !== atual.papel) ops.push({ tipo: 'papel', email, papel });
+    if (papel !== undefined && papel !== atual.papel) {
+      operacoes.push({ tipo: 'papel', email, papel });
+    }
+
     const telas = r.telas[email];
-    if (telas !== undefined && !mesmoConjunto(telas, atual.telas))
-      ops.push({ tipo: 'telas', email, telas });
+    if (telas !== undefined && !mesmoConjunto(telas, atual.telas)) {
+      operacoes.push({ tipo: 'telas', email, telas });
+    }
   }
-  return ops;
+  return operacoes;
 }
 
 /** Tira do rascunho o que um pedido já gravou — para, se o seguinte falhar, sobrar só o resto. */

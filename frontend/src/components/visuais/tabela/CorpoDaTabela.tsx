@@ -34,6 +34,21 @@ function ConteudoDaCelula(props: {
   return selo ? <BadgeDeStatus tom={selo}>{txt}</BadgeDeStatus> : <>{f.texto}</>;
 }
 
+/**
+ * As classes de uma linha: clicável, e — quando há seleção por clique cruzado — se ela
+ * é a selecionada ou uma das apagadas.
+ */
+function classeDaLinha(estado: {
+  clicavel: boolean;
+  haSelecao: boolean;
+  selecionada: boolean;
+}): string {
+  const classes = [];
+  if (estado.clicavel) classes.push('linha-clicavel');
+  if (estado.haSelecao) classes.push(estado.selecionada ? 'linha-selecionada' : 'linha-apagada');
+  return classes.join(' ');
+}
+
 export function CorpoDaTabela(props: {
   colunas: DadosDeTabela['colunas'];
   linhas: readonly Valor[][];
@@ -70,14 +85,11 @@ export function CorpoDaTabela(props: {
           {props.linhas.map((linha, i) => (
             <tr
               key={i}
-              className={
-                (aoClicarLinha ? 'linha-clicavel' : '') +
-                (props.haSelecao
-                  ? props.estaSelecionada(linha)
-                    ? ' linha-selecionada'
-                    : ' linha-apagada'
-                  : '')
-              }
+              className={classeDaLinha({
+                clicavel: aoClicarLinha !== undefined,
+                haSelecao: props.haSelecao,
+                selecionada: props.haSelecao && props.estaSelecionada(linha),
+              })}
               onClick={aoClicarLinha ? () => aoClicarLinha(linha) : undefined}
               title={
                 aoClicarLinha ? 'Clique para filtrar a página inteira a este registro' : undefined

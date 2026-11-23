@@ -4,6 +4,7 @@
 // sozinho, e é ele que a proteção de CSRF da API exige.
 
 import type { OperacaoDeAcesso } from '../utils/rascunhoDeAcessos.ts';
+import { comParametroExtra } from '../utils/url.ts';
 
 export type Papel = 'viewer' | 'dev' | 'admin';
 export type ModoDaTela = 'lista' | 'todos';
@@ -126,10 +127,11 @@ export const salvaPerfil = (id: string, nome: string, telas: string[]) =>
 export const removePerfil = (id: string) => chama('/api/admin/acessos/perfil-remove', { id });
 export const definePerfilDaPessoa = (email: string, perfil: string | null) =>
   chama('/api/admin/acessos/perfil-da-pessoa', { email, perfil });
-export const pegaHistorico = (email: string | null) =>
-  chama<{ registros: RegistroDeAuditoria[] }>(
-    `/api/admin/acessos/historico${email ? `?email=${encodeURIComponent(email)}` : ''}`,
-  );
+export const pegaHistorico = (email: string | null) => {
+  const caminho = '/api/admin/acessos/historico';
+  const url = email ? comParametroExtra(caminho, 'email', email) : caminho;
+  return chama<{ registros: RegistroDeAuditoria[] }>(url);
+};
 
 export interface UsoDeTela {
   id: string;

@@ -73,48 +73,85 @@ export function leRota(
     ? globalThis.window.location.pathname
     : '',
 ): Rota {
-  const p = new URLSearchParams(search);
-  const filtros: FiltroDaTela[] = [];
+  const parametros = new URLSearchParams(search);
+  // O que não decodificou vai para `invalidos` em vez de derrubar a tela: a URL vem de
+  // fora (link colado, favorito antigo), e a tela avisa o que ignorou.
   const invalidos: string[] = [];
+  const filtros = leFiltros(parametros.getAll('filtro'), invalidos);
+  const clicados = leClicados(parametros.getAll('clicado'), invalidos);
 
-  for (const bruto of p.getAll('filtro')) {
+  const slugDaPath = semBarrasNasPontas(pathname);
+  const pagina =
+    slugDaPath !== '' && !slugDaPath.includes('/') ? slugDaPath : parametros.get('pagina');
+
+  return { pagina, filtros, clicados, invalidos, limpo: parametros.get('limpo') === '1' };
+}
+
+/** A mensagem de um problema, seja ele `Error` ou qualquer outra coisa lançada. */
+function mensagemDoProblema(problema: unknown): string {
+  return problema instanceof Error ? problema.message : String(problema);
+}
+
+/** Os filtros da URL. Só seleção (`in`) vira filtro da tela. */
+function leFiltros(brutos: readonly string[], invalidos: string[]): FiltroDaTela[] {
+  const filtros: FiltroDaTela[] = [];
+  for (const bruto of brutos) {
     try {
       const spec = decodificaFiltro(bruto);
-      const cond = spec.conditions[0];
-      if (!cond || cond.op !== 'in') {
-        invalidos.push(`filtro '${bruto}': condição '${cond?.op ?? 'nenhuma'}' não é uma seleção.`);
+      const condicao = spec.conditions[0];
+      if (!condicao || condicao.op !== 'in') {
+        invalidos.push(
+          `filtro '${bruto}': condição '${condicao?.op ?? 'nenhuma'}' não é uma seleção.`,
+        );
         continue;
       }
       filtros.push({
         tabela: spec.entity!,
         coluna: spec.property!,
-        valores: cond.values,
+        valores: condicao.values,
         ...(spec.nivel ? { nivel: spec.nivel } : {}),
       });
-    } catch (err) {
-      invalidos.push(err instanceof Error ? err.message : String(err));
+    } catch (problema) {
+      invalidos.push(mensagemDoProblema(problema));
     }
   }
+  return filtros;
+}
 
+/** As colunas marcadas por clique num visual. */
+function leClicados(brutos: readonly string[], invalidos: string[]): CampoClicado[] {
   const clicados: CampoClicado[] = [];
-  for (const bruto of p.getAll('clicado')) {
+  for (const bruto of brutos) {
     try {
-      const o: unknown = JSON.parse(bruto);
-      const t = (o as CampoClicado)?.tabela;
-      const c = (o as CampoClicado)?.coluna;
-      if (typeof t !== 'string' || typeof c !== 'string' || t === '' || c === '') {
-        throw new Error(`clicado '${bruto}': faltou tabela ou coluna.`);
-      }
-      clicados.push({ tabela: t, coluna: c });
-    } catch (err) {
-      invalidos.push(err instanceof Error ? err.message : String(err));
+      clicados.push(campoClicadoDeJson(bruto));
+    } catch (problema) {
+      invalidos.push(mensagemDoProblema(problema));
     }
   }
+  return clicados;
+}
 
-  const slugDaPath = pathname.replace(/^\/+|\/+$/g, '');
-  const pagina = slugDaPath !== '' && !slugDaPath.includes('/') ? slugDaPath : p.get('pagina');
+function campoClicadoDeJson(bruto: string): CampoClicado {
+  const lido: unknown = JSON.parse(bruto);
+  const { tabela, coluna } = (lido ?? {}) as Partial<CampoClicado>;
+  const valido =
+    typeof tabela === 'string' && typeof coluna === 'string' && tabela !== '' && coluna !== '';
+  if (!valido) throw new Error(`clicado '${bruto}': faltou tabela ou coluna.`);
+  return { tabela, coluna };
+}
 
-  return { pagina, filtros, clicados, invalidos, limpo: p.get('limpo') === '1' };
+/**
+ * O caminho sem as barras das pontas (`/visao-geral/` → `visao-geral`).
+ *
+ * Sem regex de propósito: `/^\/+|\/+$/g` custa O(n²) num caminho só de barras, por
+ * backtracking (regra `sonarjs/super-linear-regex`), e a URL vem de fora.
+ */
+function semBarrasNasPontas(caminho: string): string {
+  let inicio = 0;
+  let fim = caminho.length;
+  while (inicio < fim && caminho[inicio] === '/') inicio += 1;
+  while (fim > inicio && caminho[fim - 1] === '/') fim -= 1;
+  return caminho.slice(inicio, fim);
 }
 
 /**

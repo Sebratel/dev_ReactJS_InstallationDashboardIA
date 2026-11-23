@@ -17691,3 +17691,45 @@ CLIENTE, TELEFONE, RUA e BAIRRO.
 
 Medições em `backend/tools/probe/src/agregada-srd.ts`; o recorte proposto, com o que
 cada decisão trava, em `docs/RECORTE-AGREGADA-SRD.md`.
+
+## #274 — a régua de complexidade do frontend é o SonarJS no `npm run lint` (23/11)
+
+PR reprovado por complexidade. Em vez de subir um SonarQube (servidor Java, ~3 GB de RAM,
+scanner no CI), entrou o **`eslint-plugin-sonarjs`** — o MESMO analisador do SonarLint,
+dentro do `eslint.config.js` que o CI já roda. O que ele acusa aqui é o que apareceria
+num gate do Sonar.
+
+**Primeira medição: 101 problemas**, 18 deles de complexidade cognitiva acima de 15.
+Os piores: `DashboardPage` (63), `GestaoDeAcessos` (36), `KpiCard` (35).
+
+**Três eram risco real, não estilo** (`sonarjs/super-linear-regex` — ReDoS, regex com
+backtracking exponencial sobre entrada que vem de fora):
+
+- `utils/rota.ts`: `/^\/+|\/+$/g` sobre o `pathname` da URL;
+- `utils/ordemDasTelas.ts`: o `replace` de "espaços, barra, espaços" sobre o nome da aba;
+- `components/acessos/PerfisDeAcesso.tsx`: `/^-+|-+$/g` sobre o nome digitado do perfil.
+
+Os três viraram varredura linear. As outras cinco ocorrências ficaram em arquivo de
+teste, onde a entrada é a que o próprio teste escreve — e por isso a regra está
+desligada só em `test/**`.
+
+**Sete `sonarjs/todo-tag` eram falso positivo**: a regra marca a palavra PORTUGUESA
+"todo"/"TODO" ("TODO filtro da página", "todo render") como marcador de tarefa. Como a
+regra 6 do `CLAUDE.md` manda escrever em português, a regra ficou desligada, com o
+motivo no `eslint.config.js`.
+
+**Os dois maiores arquivos do frontend viraram pastas**, por laço aninhado e por tamanho:
+
+```
+Previsoes.tsx   933 linhas  →   55 + 8 arquivos (maior: 248)
+Operacao.tsx    818 linhas  →   64 + 10 arquivos (maior: 202)
+```
+
+O laço aninhado mais caro era o mapa de calor da Operação: para cada dia da semana ele
+varria a lista inteira de células (`dias.map(… calor.filter(…))`). Virou um agrupamento
+só, em `operacao/dados.ts`. A régua agora inclui `max-depth: 3` e `max-nested-callbacks:
+3` para não voltar.
+
+**Estado final: zero.** `npm run lint` passa limpo, com 2.561 testes de backend e 285 de
+frontend verdes. Quem exceder 15 de complexidade cognitiva, aninhar laço ou repetir uma
+regex de backtracking daqui para frente reprova no CI sozinho, sem depender de revisão.

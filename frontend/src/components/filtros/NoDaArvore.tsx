@@ -4,6 +4,12 @@ import { useEffect, useRef } from 'react';
 import { cn } from '../../utils/cn.ts';
 
 /** Uma linha da árvore: seta de expandir, caixa de marcar e rótulo. */
+/** A seta do nó: nada quando ele não tem filhos. */
+function setaDoNo(temFilhos: boolean, aberto: boolean): string {
+  if (!temFilhos) return '';
+  return aberto ? '▾' : '▸';
+}
+
 export function NoDaArvore(props: {
   aberto: boolean;
   temFilhos: boolean;
@@ -28,7 +34,7 @@ export function NoDaArvore(props: {
         aria-label={props.aberto ? 'Recolher' : 'Expandir'}
         aria-expanded={props.aberto}
       >
-        {props.temFilhos ? (props.aberto ? '▾' : '▸') : ''}
+        {setaDoNo(props.temFilhos, props.aberto)}
       </button>
       <label
         className={cn(

@@ -139,28 +139,14 @@ export function Capa(props: {
           </p>
           <table className="w-full text-[0.78rem]">
             <tbody>
-              {FONTES.map(([nome, ids], i) => {
-                const s = situacaoDaFonte(ids, saude, agora);
-                const linha = i < FONTES.length - 1 ? 'border-b border-pbi-borda' : '';
-                return (
-                  <tr key={nome}>
-                    <td className={`py-[6px] font-semibold ${linha}`}>{nome}</td>
-                    <td
-                      className={`py-[6px] text-right text-[0.72rem] whitespace-nowrap text-pbi-muted ${linha}`}
-                    >
-                      {!s ? (
-                        '—'
-                      ) : s.status === 'falhou' ? (
-                        <span className="font-bold text-pbi-critico-texto">falhou</span>
-                      ) : s.status === 'vencida' ? (
-                        <span className="font-bold text-pbi-gold-600">parado · {s.idade}</span>
-                      ) : (
-                        `${s.idade}${s.proxima ? ` · ${s.proxima}` : s.cadencia ? ` · a cada ${s.cadencia}` : ''}`
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {FONTES.map(([nome, ids], indice) => (
+                <LinhaDaFonte
+                  key={nome}
+                  nome={nome}
+                  situacao={situacaoDaFonte(ids, saude, agora)}
+                  comLinhaEmbaixo={indice < FONTES.length - 1}
+                />
+              ))}
             </tbody>
           </table>
         </Bloco>
@@ -193,5 +179,47 @@ export function Capa(props: {
         <span>Inteligência de Dados · Sebratel</span>
       </div>
     </div>
+  );
+}
+
+/** A situação de um grupo de consultas, como `situacaoDaFonte` a devolve. */
+type SituacaoDaFonte = ReturnType<typeof situacaoDaFonte>;
+
+/**
+ * O que a coluna da direita diz de um grupo: a idade do dado e, ao lado, quando o grupo
+ * inteiro terá dado novo. Dado velho é visível, nunca silencioso — por isso "falhou" e
+ * "parado" ganham destaque em vez de virar mais um texto cinza.
+ */
+function TextoDaSituacao({ situacao }: { situacao: NonNullable<SituacaoDaFonte> }) {
+  if (situacao.status === 'falhou') {
+    return <span className="font-bold text-pbi-critico-texto">falhou</span>;
+  }
+  if (situacao.status === 'vencida') {
+    return <span className="font-bold text-pbi-gold-600">parado · {situacao.idade}</span>;
+  }
+  if (situacao.proxima) return <>{`${situacao.idade} · ${situacao.proxima}`}</>;
+  if (situacao.cadencia) return <>{`${situacao.idade} · a cada ${situacao.cadencia}`}</>;
+  return <>{situacao.idade}</>;
+}
+
+function LinhaDaFonte({
+  nome,
+  situacao,
+  comLinhaEmbaixo,
+}: {
+  nome: string;
+  situacao: SituacaoDaFonte;
+  comLinhaEmbaixo: boolean;
+}) {
+  const borda = comLinhaEmbaixo ? 'border-b border-pbi-borda' : '';
+  return (
+    <tr>
+      <td className={`py-[6px] font-semibold ${borda}`}>{nome}</td>
+      <td
+        className={`py-[6px] text-right text-[0.72rem] whitespace-nowrap text-pbi-muted ${borda}`}
+      >
+        {situacao ? <TextoDaSituacao situacao={situacao} /> : '—'}
+      </td>
+    </tr>
   );
 }

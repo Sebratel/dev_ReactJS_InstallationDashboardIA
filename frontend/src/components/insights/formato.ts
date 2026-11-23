@@ -17,19 +17,26 @@ export const dec = (v: Talvez, casas = 1): string =>
 export const pct = (v: Talvez, casas = 0): string =>
   v === null || v === undefined
     ? '—'
-    : `${(v * 100).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`;
+    : `${emPorCento(v, { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`;
 
-export const sinal = (v: Talvez, casas = 0): string =>
-  v === null || v === undefined
-    ? '—'
-    : `${v > 0 ? '+' : ''}${(v * 100).toLocaleString('pt-BR', { maximumFractionDigits: casas })}%`;
+/** O valor vezes 100, escrito no padrão pt-BR. */
+const emPorCento = (valor: number, opcoes: Intl.NumberFormatOptions): string =>
+  (valor * 100).toLocaleString('pt-BR', opcoes);
+
+/** O mesmo que `pct`, mas com o `+` na frente quando sobe. */
+export const sinal = (v: Talvez, casas = 0): string => {
+  if (v === null || v === undefined) return '—';
+  const maisOuNada = v > 0 ? '+' : '';
+  return `${maisOuNada}${emPorCento(v, { maximumFractionDigits: casas })}%`;
+};
 
 const DIAS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 /** "ter 18/11". A data chega como `AAAA-MM-DD`; meio-dia evita o fuso virar o dia. */
-export const diaCurto = (iso: string | undefined): string =>
-  iso
-    ? `${DIAS[new Date(`${iso}T12:00:00`).getDay()] ?? ''} ${iso.slice(8, 10)}/${iso.slice(5, 7)}`
-    : '';
+export const diaCurto = (iso: string | undefined): string => {
+  if (!iso) return '';
+  const diaDaSemana = DIAS[new Date(`${iso}T12:00:00`).getDay()] ?? '';
+  return `${diaDaSemana} ${dataCurta(iso)}`;
+};
 export const dataCurta = (iso: string | undefined): string =>
   iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '';
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];

@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, CheckCircle2, RotateCw, Sparkles, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { textoDoErro } from '../../utils/erroDaTela.ts';
 import {
   chavesDeConsulta,
   listaDashboards,
@@ -137,12 +138,7 @@ export function PainelInsights({
 
   const subRecorte = descreverFiltrosDaTela(filtros, clicados);
   const statusErro = (insightsQ.error as { status?: number } | null)?.status;
-  const msgErro =
-    insightsQ.error instanceof Error
-      ? insightsQ.error.message
-      : insightsQ.error
-        ? String(insightsQ.error)
-        : 'Falha ao consultar a IA.';
+  const msgErro = insightsQ.error ? textoDoErro(insightsQ.error) : 'Falha ao consultar a IA.';
   const dados = insightsQ.data;
   const erroUi = insightsQ.isError ? traduzirErroIa(statusErro, msgErro) : null;
 

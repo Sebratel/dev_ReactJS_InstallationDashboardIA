@@ -102,6 +102,46 @@ const DOURADO_CLARO = '#F0E199';
 
 /** A cor de UMA coluna de série única, pela magnitude: clara no menor valor da tela,
  *  cheia no maior — o mesmo tom, mais claro para menos (é magnitude, não identidade). */
+
+/** Dois dígitos, para dia e mês. */
+const doisDigitos = (numero: number) => String(numero).padStart(2, '0');
+
+/**
+ * O rótulo de um dia no eixo: só o que distingue um ponto do outro.
+ *
+ * Com tudo no mesmo mês, o dia basta; cruzando meses, entra o mês; cruzando anos, o ano
+ * abreviado também.
+ */
+function rotuloDoDia(
+  dia: number,
+  mes: number,
+  ano: number | null,
+  periodo: { variosAnos: boolean; variosMeses: boolean },
+): string {
+  if (periodo.variosAnos && ano !== null) {
+    return `${doisDigitos(dia)}/${doisDigitos(mes)}/${String(ano).slice(-2)}`;
+  }
+  if (periodo.variosMeses) return `${doisDigitos(dia)}/${doisDigitos(mes)}`;
+  return String(dia);
+}
+
+/**
+ * O nome de uma série na legenda.
+ *
+ * Sem campo de legenda, vale o nome da medida. Com ele, vale o valor da legenda — e só
+ * quando há MAIS DE UMA medida o nome dela entra junto, para não repetir a mesma palavra
+ * em todas as entradas.
+ */
+function nomeDaSerieNaLegenda(
+  sufixo: string,
+  nomeDaMedida: string | null | undefined,
+  quantasSeries: number,
+): string {
+  const nomeDoValor = nomeDaMedida ?? '(sem rótulo)';
+  if (!sufixo) return nomeDoValor;
+  return quantasSeries > 1 ? `${sufixo} · ${nomeDoValor}` : sufixo;
+}
+
 export function corDaColunaPorValor(valor: number, min: number, max: number): string {
   if (max <= min) return DOURADO;
   const t = Math.max(0, Math.min(1, (valor - min) / (max - min)));
@@ -302,12 +342,9 @@ function rotulaDias(categorias: CategoriaMontada[], niveis: readonly (string | n
   categorias.forEach((c, k) => {
     const { ano, mes, dia } = datas[k]!;
     if (mes === null || dia === null) return;
-    c.eixo =
-      anos.size > 1 && ano !== null
-        ? `${dd(dia)}/${dd(mes)}/${String(ano).slice(-2)}`
-        : meses.size > 1
-          ? `${dd(dia)}/${dd(mes)}`
-          : String(dia);
+    // O eixo mostra só o que distingue um ponto do outro: o dia basta quando tudo é do
+    // mesmo mês; o ano entra quando a série cruza mais de um.
+    c.eixo = rotuloDoDia(dia, mes, ano, { variosAnos: anos.size > 1, variosMeses: meses.size > 1 });
     if (ano !== null) {
       const semana = DIAS_DA_SEMANA[new Date(ano, mes - 1, dia).getDay()];
       c.rotulo = `${semana}, ${dd(dia)}/${dd(mes)}/${ano}`;
@@ -362,12 +399,7 @@ export function montaGrafico(d: DadosDeGrafico): GraficoMontado {
     const sufixo = iLegenda.length ? rotulo(p.categoria, iLegenda) : '';
 
     d.series.forEach((s, k) => {
-      const nomeDoValor = s.nome ?? '(sem rótulo)';
-      const nome = sufixo
-        ? d.series.length > 1
-          ? `${sufixo} · ${nomeDoValor}`
-          : sufixo
-        : nomeDoValor;
+      const nome = nomeDaSerieNaLegenda(sufixo, s.nome, d.series.length);
       const chave = `${k} ${sufixo}`;
       let serie = mapa.get(chave);
       if (!serie) {

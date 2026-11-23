@@ -6,21 +6,20 @@
 // `useDadosDaTela` (o que o servidor responde), `useTempoReal` (quando buscar de novo),
 // `usePreCargas` e `useVizinhanca` (o que adiantar) —, e os pedaços da tela são
 // componentes.
+//
+// **O que a aba É decide todo o resto**, e isso é uma pergunta só: `classificaAba`
+// (`utils/abaDaTela.ts`). Antes eram quatro booleanos soltos e três cascatas de
+// ternários aninhados — uma para o acesso, uma para o título, uma para o conteúdo —, e
+// toda aba nova pedia um ternário a mais em cada uma das três.
 
-import { lazy, Suspense, useEffect, useMemo, type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { MapPin, Settings, TrendingUp } from 'lucide-react';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { CHAVE_INSIGHTS } from '../../services/insightsService.ts';
-import {
-  ehAbortError,
-  ehErroDeAcesso,
-  ehErroDeSessao,
-  registraAberturaDeAba,
-} from '../../services/dashboardService.ts';
+import { registraAberturaDeAba } from '../../services/dashboardService.ts';
 import { sai } from '../../services/authService.ts';
 import { useSessaoStore } from '../../store/sessaoStore.ts';
 import { useRascunhoDeAcessos } from '../../store/rascunhoDeAcessosStore.ts';
-import { pegaMatriz, pegaUsoDasTelas } from '../../services/acessoService.ts';
 import { useModo } from '../../context/ModoContext.tsx';
 import {
   useDashboards,
@@ -37,50 +36,44 @@ import { useVizinhanca } from '../../hooks/useVizinhanca.ts';
 import { useAbaixoDaDobra } from '../../hooks/useAbaixoDaDobra.ts';
 import { useSobDemandaJunto } from '../../hooks/useSobDemandaJunto.ts';
 import { useEspacoSemVisual } from '../../hooks/useAlturaMedida.ts';
+import { useAcessosAoVivo } from '../../hooks/useAcessosAoVivo.ts';
+import { useAbaPadrao } from '../../hooks/useAbaPadrao.ts';
+import { usePreCargaDeAcessos } from '../../hooks/usePreCargaDeAcessos.ts';
+import { useAvisoDeAlteracaoNaoSalva } from '../../hooks/useAvisoDeAlteracaoNaoSalva.ts';
+import { useRegistroDeAbertura } from '../../hooks/useRegistroDeAbertura.ts';
+import {
+  ABA_OPERACAO,
+  ABA_PERMISSOES,
+  ABA_PREVISOES,
+  abaLiberada,
+  classificaAba,
+  ehAbaDoRelatorio,
+  tituloDaAba,
+} from '../../utils/abaDaTela.ts';
+import { mensagemDeErroDaTela } from '../../utils/erroDaTela.ts';
 import { avaliaSaudeQueries } from '../../utils/avisoSaude.ts';
 import { dataDaPagina } from '../../utils/filtrosPadrao.ts';
 import { segmentacoesDaTela } from '../../utils/segmentacoesDaTela.ts';
 import { AppShell } from '../../components/layout/AppShell.tsx';
 import { BotaoAtualizar } from '../../components/layout/BotaoAtualizar.tsx';
-import { EsqueletoDaPagina } from '../../components/layout/EsqueletoDaPagina.tsx';
-import { FaixaDeConferencia } from '../../components/layout/FaixaDeConferencia.tsx';
 import {
   BarraDeFiltros,
   EsqueletoDaBarraDeFiltros,
 } from '../../components/filtros/BarraDeFiltros.tsx';
-import { Capa } from '../../components/capa/Capa.tsx';
 import { SemAcesso } from '../../components/auth/SemAcesso.tsx';
-import { useAcessosAoVivo } from '../../hooks/useAcessosAoVivo.ts';
-import { CHAVE_ACESSOS, GestaoDeAcessos } from '../../components/acessos/GestaoDeAcessos.tsx';
-import { Metas } from '../../components/metas/Metas.tsx';
-import { chaveDoUso, PERIODOS_DE_USO } from '../../components/acessos/UsoDasTelas.tsx';
 import { Aviso, Erro } from '../../components/ui/Cartao.tsx';
-import { KpiGridSection } from '../../components/visuais/KpiGridSection.tsx';
-import { VisualGridSection } from '../../components/visuais/VisualGridSection.tsx';
-import { Esqueleto, MensagemDeEstado } from '../../components/ui/Estado.tsx';
+import { ConteudoDoRelatorio } from './ConteudoDoRelatorio.tsx';
+import { ConteudoForaDoRelatorio } from './ConteudoForaDoRelatorio.tsx';
 
-/** A aba PERMISSÕES na URL (`?pagina=permissoes`). Não é tela do relatório: não tem
- *  layout, filtro nem snapshot, e só admin/dev a recebe na faixa. */
-const ABA_PERMISSOES = 'permissoes';
-/** A aba METAS (`?pagina=metas`, 12/11/2026). Também não é tela do relatório — edita o
- *  número que a medida `# META` lê. Quem a recebe vem do servidor (`eu.abasExtras`). */
-const ABA_METAS = 'metas';
-/** As abas de INSIGHTS (18/11/2026): leem o Voalle ao vivo e mostram modelo. Também não são
- *  do relatório, e chegam pelo `eu.abasExtras` como a Metas. Carregam sob demanda: o
- *  recharts e o leaflet só baixam para quem abre uma delas. */
-const ABA_OPERACAO = 'insights-operacao';
-const ABA_PREVISOES = 'insights-previsoes';
-const Operacao = lazy(() => import('../../components/insights/Operacao.tsx'));
-const Previsoes = lazy(() => import('../../components/insights/Previsoes.tsx'));
 const ICONE_DA_ABA: Record<string, ReactNode> = {
   [ABA_OPERACAO]: <MapPin size={13} aria-hidden />,
   [ABA_PREVISOES]: <TrendingUp size={13} aria-hidden />,
 };
 
 export function DashboardPage() {
-  const qc = useQueryClient();
+  const clienteDeConsultas = useQueryClient();
   const { conferencia } = useModo();
-  const expirou = useSessaoStore((s) => s.expirou);
+  const expirou = useSessaoStore((sessao) => sessao.expirou);
   const {
     atual,
     filtros,
@@ -92,20 +85,18 @@ export function DashboardPage() {
     aoFiltrarAlvos,
     limpaFiltros,
   } = useEstadoDaTela();
-  const naGestao = atual === ABA_PERMISSOES;
-  const nasMetas = atual === ABA_METAS;
-  const nosInsights = atual === ABA_OPERACAO || atual === ABA_PREVISOES;
-  // As abas que não são do relatório: nenhuma delas busca dado de página.
-  const foraDoRelatorio = naGestao || nasMetas || nosInsights;
+
+  const especieDaAba = classificaAba(atual);
+  const noRelatorio = ehAbaDoRelatorio(especieDaAba);
+  // A página cujo DADO a tela busca: nenhuma fora do relatório — layout, abertura, tempo
+  // real e pré-carga ficam parados enquanto uma aba dessas está aberta.
+  const paginaDoDado = noRelatorio ? atual : null;
   const buscandoInsights = useIsFetching({ queryKey: CHAVE_INSIGHTS }) > 0;
-  // A página cujo DADO a tela busca: nenhuma na PERMISSÕES nem na METAS — layout,
-  // abertura, tempo real e pré-carga ficam parados enquanto uma delas está aberta.
-  const paginaDoDado = foraDoRelatorio ? null : atual;
 
   // **O estado do servidor mora no React Query** (fase 2): a lista de páginas, a forma
   // de cada uma, a abertura e a saúde. Ver `hooks/useDadosDaTela.ts`.
   const dashboardsQ = useDashboards();
-  // Menu, aba Permissões e cache seguem os acessos desta conta sem F5.
+  // Menu, aba Configurações e cache seguem os acessos desta conta sem F5.
   useAcessosAoVivo();
   const paginas = useMemo(() => dashboardsQ.data ?? [], [dashboardsQ.data]);
   const layoutQ = useLayout(paginaDoDado);
@@ -113,19 +104,19 @@ export function DashboardPage() {
   const paginaQ = usePaginaAberta(paginaDoDado, layoutQ.data, filtros, clicados);
   const saude = useSaude().data ?? null;
   const eu = useEu().data ?? null;
-  const pendentes = useRascunhoDeAcessos((s) => s.pendentes);
-  // As abas fora do relatório, na ordem em que aparecem à direita da faixa. PERMISSÕES sai
-  // do papel (admin/dev); as outras saem do servidor, que já aplicou o acesso por aba.
-  //
-  // Desde 17/11/2026 a aba se chama CONFIGURAÇÕES (rótulo da casca padrão e da Manutenção),
-  // vai por ÚLTIMO, encostada na direita, e leva a engrenagem. O id na URL continua
-  // `permissoes`: link e favorito antigos seguem abrindo a mesma tela.
+  const pendentes = useRascunhoDeAcessos((rascunho) => rascunho.pendentes);
+  const podeGerir = eu?.podeGerir === true;
+
+  // As abas fora do relatório, na ordem em que aparecem à direita da faixa. A de
+  // Configurações sai do papel (admin/dev) e vai por ÚLTIMO, encostada na direita, com a
+  // engrenagem; as outras saem do servidor, que já aplicou o acesso por aba. O id dela na
+  // URL continua `permissoes`: link e favorito antigos seguem abrindo a mesma tela.
   const abasExtras = useMemo(
     () => [
-      ...(eu?.abasExtras ?? []).map((a) => ({
-        id: a.id,
-        rotulo: a.nome,
-        ...(ICONE_DA_ABA[a.id] ? { icone: ICONE_DA_ABA[a.id] } : {}),
+      ...(eu?.abasExtras ?? []).map((aba) => ({
+        id: aba.id,
+        rotulo: aba.nome,
+        ...(ICONE_DA_ABA[aba.id] ? { icone: ICONE_DA_ABA[aba.id] } : {}),
       })),
       ...(eu?.podeGerir
         ? [
@@ -140,101 +131,57 @@ export function DashboardPage() {
     ],
     [eu?.podeGerir, eu?.abasExtras, pendentes],
   );
-  // A lista já vem só com as abas desta conta (`permissoes.ts`, filtrado no servidor).
-  // `null` enquanto ela não chegou: até lá, uma aba da URL pode ser uma que a conta não abre.
-  // A PERMISSÕES não está na lista: vale para quem pode gerir.
-  const atualLiberada = dashboardsQ.data
-    ? naGestao
-      ? eu?.podeGerir === true
-      : nasMetas || nosInsights
-        ? abasExtras.some((a) => a.id === atual)
-        : paginas.some((p) => p.id === atual)
-    : null;
 
-  // A matriz chega antes do clique na aba (`feedback-tudo-pre-carregado`) — só para quem
-  // a vê; para os outros o servidor responderia 403.
-  useEffect(() => {
-    if (!eu?.podeGerir) return;
-    void qc.prefetchQuery({ queryKey: CHAVE_ACESSOS, queryFn: pegaMatriz });
-    // Os três períodos do cartão "Uso das abas": trocar o seletor não mostra "Lendo…".
-    for (const dias of PERIODOS_DE_USO) {
-      void qc.prefetchQuery({ queryKey: chaveDoUso(dias), queryFn: () => pegaUsoDasTelas(dias) });
-    }
-  }, [eu?.podeGerir, qc]);
+  const liberada = abaLiberada(especieDaAba, {
+    listaDePaginasChegou: dashboardsQ.data !== undefined,
+    podeGerir,
+    paginasDoRelatorio: paginas,
+    abasExtras,
+    abaAberta: atual,
+  });
 
-  // Só a troca efetiva de aba dispara isto. Filtro, prefetch e aquecimento não alteram
-  // `paginaDoDado`; a API ainda aplica as exclusões e a deduplicação de 30 minutos.
-  useEffect(() => {
-    if (paginaDoDado && atualLiberada === true) registraAberturaDeAba(paginaDoDado);
-  }, [paginaDoDado, atualLiberada]);
+  // A matriz de acessos chega antes do clique na aba; a aba que a conta não abre leva a
+  // uma liberada; e permissão por salvar não some num fechar de janela.
+  usePreCargaDeAcessos(podeGerir);
+  useRegistroDeAbertura(paginaDoDado, liberada, registraAberturaDeAba);
+  useAvisoDeAlteracaoNaoSalva(pendentes);
+  useAbaPadrao({
+    abaAberta: atual,
+    paginasDisponiveis: dashboardsQ.data,
+    liberada,
+    iniciaEm,
+    escolhe,
+  });
 
-  // Alteração de permissão por salvar não some calada num recarregar ou fechar de aba
-  // do navegador. Trocar de aba DENTRO do relatório não perde nada (o rascunho mora na
-  // store) — por isso não pergunta.
-  useEffect(() => {
-    if (pendentes === 0) return;
-    const segura = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener('beforeunload', segura);
-    return () => window.removeEventListener('beforeunload', segura);
-  }, [pendentes]);
-  // Erro que a tela mostra: o de sessão vira login (no `QueryCache`), e pedido
-  // cancelado não é erro — é o pedido seguinte fazendo o trabalho certo. O 403 de uma
-  // aba fora da lista também não: o efeito abaixo leva para uma aba liberada.
-  const erroDeConsulta = [dashboardsQ.error, layoutQ.error, paginaQ.error].find(
-    (e) =>
-      e && !ehErroDeSessao(e) && !ehAbortError(e) && !(ehErroDeAcesso(e) && atualLiberada !== true),
-  );
-  const erro = erroDeConsulta
-    ? erroDeConsulta instanceof Error
-      ? erroDeConsulta.message
-      : String(erroDeConsulta)
-    : null;
+  const erro = mensagemDeErroDaTela([dashboardsQ.error, layoutQ.error, paginaQ.error], liberada);
 
   const { horaRealtime, atualiza } = useTempoReal(paginaDoDado);
   const { prefetchaPagina, cancelaPrefetch, aoPreverAlvos, aoPreverFiltro, aoPreverLimpeza } =
     usePreCargas(paginaDoDado, layout, filtros, clicados);
 
-  // A página inicial, quando a URL não trouxe uma: a primeira pronta da lista.
-  useEffect(() => {
-    const lista = dashboardsQ.data;
-    if (!lista || atual) return;
-    const escolhida = lista.find((d) => d.pronta)?.id ?? lista[0]?.id;
-    if (escolhida) iniciaEm(escolhida);
-  }, [dashboardsQ.data, atual, iniciaEm]);
-
-  // A URL trouxe uma aba que esta conta não abre (link compartilhado, favorito antigo):
-  // vai para a primeira liberada. Quem barra o dado é o 403 do servidor; isto é só não
-  // deixar a pessoa parada diante dele.
-  useEffect(() => {
-    if (atualLiberada !== false || !atual) return;
-    const destino = paginas.find((d) => d.pronta)?.id ?? paginas[0]?.id;
-    if (destino) escolhe(destino);
-  }, [atualLiberada, atual, paginas, escolhe]);
-
   // A abertura de OUTRA página nunca é mostrada como se fosse desta (o
   // `placeholderData` mantém a anterior na tela enquanto a nova chega).
-  const pagina = paginaQ.data ?? null;
-  const paginaValida = pagina && pagina.id === paginaDoDado ? pagina : null;
-  const visuais = paginaValida?.visuais ?? [];
+  const paginaRecebida = paginaQ.data ?? null;
+  const paginaCalculada =
+    paginaRecebida && paginaRecebida.id === paginaDoDado ? paginaRecebida : null;
+  const visuais = paginaCalculada?.visuais ?? [];
   const dataDaTela = dataDaPagina(paginaDoDado);
   // Do LAYOUT, não do dado: o layout chega antes do cálculo, e trocar para uma página fora
   // do cache deixava a barra só com "Período" até a página chegar — aí ela crescia uma
   // linha e empurrava os cards. `visuais` fica para API antiga, sem `segmentacoes`.
   const segmentacoes = segmentacoesDaTela(layout?.segmentacoes ?? visuais, dataDaTela, filtros);
+  // A página parou de mexer: nada de placeholder nem de busca em curso. É a condição
+  // para adiantar o que está fora da dobra e a vizinhança de um clique.
+  const paginaAssentada =
+    paginaCalculada !== null && !paginaQ.isPlaceholderData && !paginaQ.isFetching;
 
   // Os visuais caros saem junto com a abertura no clique, não depois dela. A lista vem
   // da resposta desta página que está na tela (a anterior, enquanto a nova chega).
-  useSobDemandaJunto(paginaDoDado, filtros, clicados, idsSobDemanda(paginaValida));
+  useSobDemandaJunto(paginaDoDado, filtros, clicados, idsSobDemanda(paginaCalculada));
 
   // O resto da página ESTE recorte, logo depois da abertura: quem rola até o fim não
   // encontra esqueleto. Antes da vizinhança, que espera a página parar 2 s.
-  useAbaixoDaDobra(
-    paginaDoDado,
-    layout,
-    filtros,
-    clicados,
-    paginaValida !== null && !paginaQ.isPlaceholderData && !paginaQ.isFetching,
-  );
+  useAbaixoDaDobra(paginaDoDado, layout, filtros, clicados, paginaAssentada);
 
   // Os estados a um clique de filtro deste, pré-carregados enquanto a pessoa lê — os
   // chips primeiro, que são o clique mais provável (ACHADOS #179).
@@ -245,9 +192,9 @@ export function DashboardPage() {
     clicados,
     [
       ...(segmentacoes.chips ? [segmentacoes.chips] : []),
-      ...segmentacoes.dropdowns.map((d) => d.spec),
+      ...segmentacoes.dropdowns.map((dropdown) => dropdown.spec),
     ],
-    paginaValida !== null && !paginaQ.isPlaceholderData && !paginaQ.isFetching,
+    paginaAssentada,
   );
 
   // E `--util` também precisa descontar o que a página gasta e NÃO é card: a faixa de
@@ -255,24 +202,24 @@ export function DashboardPage() {
   // título, entre as duas faixas (`--h-entre`). Ver `useEspacoSemVisual`.
   const antesDosVisuaisRef = useEspacoSemVisual<HTMLDivElement>('--h-antes', '--h-entre');
 
-  const nome = naGestao
-    ? 'Configurações'
-    : nasMetas
-      ? 'Metas'
-      : nosInsights
-        ? (abasExtras.find((a) => a.id === atual)?.rotulo ?? 'Insights')
-        : (paginas.find((p) => p.id === atual)?.nome ?? 'Instalação');
-  // Avaliação de saúde das queries do snapshot (Marco A6): monitora atraso e falhas por query.
-  // Na PERMISSÕES não há dado de snapshot para avisar.
-  const avisoSaude = foraDoRelatorio
-    ? undefined
-    : avaliaSaudeQueries(saude?.refresh?.queries, paginaValida?.dadoDe);
+  const titulo = tituloDaAba(especieDaAba, {
+    paginasDoRelatorio: paginas,
+    abasExtras,
+    abaAberta: atual,
+  });
+  // Avaliação de saúde das queries do snapshot (Marco A6): monitora atraso e falhas por
+  // query. Fora do relatório não há dado de snapshot para avisar.
+  const avisoSaude = noRelatorio
+    ? avaliaSaudeQueries(saude?.refresh?.queries, paginaCalculada?.dadoDe)
+    : undefined;
+
+  const encerraSessao = () => {
+    void sai().finally(() => expirou());
+  };
 
   // Logado, mas nenhuma aba liberada — o acesso nega por padrão (`permissoes.ts`).
   if (dashboardsQ.data && paginas.length === 0) {
-    return (
-      <SemAcesso usuario={eu?.usuario ?? null} aoSair={() => void sai().finally(() => expirou())} />
-    );
+    return <SemAcesso usuario={eu?.usuario ?? null} aoSair={encerraSessao} />;
   }
 
   return (
@@ -285,38 +232,31 @@ export function DashboardPage() {
       // Quem barra de verdade é o 403 do servidor (/api/admin/acessos, /api/admin/metas);
       // a faixa só esconde o que a conta não abre.
       abasExtras={abasExtras}
-      aoSair={() => {
-        sai().finally(() => expirou());
-      }}
-      titulo={nome}
+      aoSair={encerraSessao}
+      titulo={titulo}
       usuario={eu?.usuario}
       nome={eu?.nome}
       foto={eu?.foto}
-      dadoDe={paginaValida?.dadoDe ?? null}
+      dadoDe={paginaCalculada?.dadoDe ?? null}
       avisoSaude={avisoSaude}
       ultimaAtualizacaoRealtime={horaRealtime}
       barra={
-        paginaDoDado ? (
-          layoutQ.isLoading ? (
-            <EsqueletoDaBarraDeFiltros />
-          ) : (
-            <BarraDeFiltros
-              pagina={paginaDoDado}
-              filtros={filtros}
-              dataDaTela={dataDaTela}
-              segmentacoes={segmentacoes}
-              aoMudar={mudaFiltro}
-              aoPrever={aoPreverFiltro}
-              aoLimpar={limpaFiltros}
-              aoPreverLimpeza={aoPreverLimpeza}
-            />
-          )
-        ) : null
+        <BarraDaTela
+          pagina={paginaDoDado}
+          carregandoLayout={layoutQ.isLoading}
+          filtros={filtros}
+          dataDaTela={dataDaTela}
+          segmentacoes={segmentacoes}
+          aoMudar={mudaFiltro}
+          aoPrever={aoPreverFiltro}
+          aoLimpar={limpaFiltros}
+          aoPreverLimpeza={aoPreverLimpeza}
+        />
       }
       acoes={
-        nosInsights ? (
+        especieDaAba === 'insights' ? (
           <BotaoAtualizar
-            aoClicar={() => void qc.invalidateQueries({ queryKey: CHAVE_INSIGHTS })}
+            aoClicar={() => void clienteDeConsultas.invalidateQueries({ queryKey: CHAVE_INSIGHTS })}
             desligado={false}
             buscando={buscandoInsights}
           />
@@ -337,74 +277,48 @@ export function DashboardPage() {
 
       {erro ? <Erro>{erro}</Erro> : null}
 
-      {nasMetas ? (
-        <div ref={antesDosVisuaisRef} className="flex flex-col gap-[var(--gap)]">
-          <Metas />
-        </div>
-      ) : nosInsights ? (
-        <div ref={antesDosVisuaisRef} className="flex flex-col gap-[var(--gap)]">
-          <Suspense fallback={<Esqueleto titulo={nome} />}>
-            {atual === ABA_OPERACAO ? <Operacao /> : <Previsoes />}
-          </Suspense>
-        </div>
-      ) : naGestao ? (
-        // A PERMISSÕES dentro do mesmo nó medido: a matriz é um cartão `matriz`, e a
-        // altura dele sai de `--util`, que desconta o `--h-antes` medido aqui.
-        <div ref={antesDosVisuaisRef} className="flex flex-col gap-[var(--gap)]">
-          <GestaoDeAcessos />
-        </div>
+      {noRelatorio ? (
+        <ConteudoDoRelatorio
+          abaAberta={atual ?? ''}
+          paginaCalculada={paginaCalculada}
+          layout={layout}
+          visuais={visuais}
+          filtros={filtros}
+          clicados={clicados}
+          saude={saude}
+          quantidadeDeTelas={paginas.length}
+          emConferencia={conferencia}
+          temErro={erro !== null}
+          aoFiltrarAlvos={aoFiltrarAlvos}
+          aoPreverAlvos={aoPreverAlvos}
+          refDoEspacoAntesDosVisuais={antesDosVisuaisRef}
+        />
       ) : (
-        <>
-          {conferencia && paginaValida ? (
-            <FaixaDeConferencia pagina={paginaValida} filtros={filtros} />
-          ) : null}
-
-          {atual !== null && !paginaValida && !erro ? (
-            layout ? (
-              <EsqueletoDaPagina layout={layout} />
-            ) : (
-              // Janela residual em que nem `layout` chegou ainda — tipicamente um
-              // sub-frame (Fase L4: o endpoint é um mapa em memória). Sem a forma real
-              // ainda para copiar, o bloco genérico de antes é o fallback.
-              <Esqueleto />
-            )
-          ) : null}
-
-          {/* A CAPA é a única tela escrita à mão, e o motivo é medido: das 30 formas que a
-            spec traz para ela, 28 não têm número — a tela gerada renderizava DOIS cartões
-            de indicador num vazio. Os dois KPIs são dado de verdade e continuam na tela,
-            como selo da faixa da capa. */}
-          {atual === 'capa' ? (
-            <Capa
-              dadoDe={paginaValida?.dadoDe ?? null}
-              saude={saude}
-              telas={paginas.length}
-              visuais={visuais}
-            />
-          ) : (
-            <KpiGridSection layout={layout} visuais={visuais} />
-          )}
-
-          {/* O `div` existe para medir: é dele que sai `--h-antes`, a distância do topo do
-            conteúdo até o primeiro card. Ele não tem estilo — a grade continua sendo a do
-            `VisualGridSection`. */}
-          <div ref={antesDosVisuaisRef}>
-            <VisualGridSection
-              pagina={atual!}
-              layout={layout}
-              visuais={visuais}
-              filtros={filtros}
-              clicados={clicados}
-              aoFiltrar={aoFiltrarAlvos}
-              aoPrever={aoPreverAlvos}
-            />
-          </div>
-
-          {paginaValida && visuais.every((v) => v.conteudo === null) ? (
-            <MensagemDeEstado como="div">Esta página não tem visual com número.</MensagemDeEstado>
-          ) : null}
-        </>
+        <ConteudoForaDoRelatorio
+          especie={especieDaAba}
+          abaAberta={atual}
+          titulo={titulo}
+          refDoEspacoAntesDosVisuais={antesDosVisuaisRef}
+        />
       )}
     </AppShell>
   );
+}
+
+/**
+ * A barra de filtros da aba aberta: nada fora do relatório, e esqueleto enquanto o
+ * layout não chegou — sem ele a barra nasceria só com "Período" e cresceria uma linha
+ * depois, empurrando os cards.
+ */
+function BarraDaTela({
+  pagina,
+  carregandoLayout,
+  ...resto
+}: {
+  pagina: string | null;
+  carregandoLayout: boolean;
+} & Omit<Parameters<typeof BarraDeFiltros>[0], 'pagina'>) {
+  if (!pagina) return null;
+  if (carregandoLayout) return <EsqueletoDaBarraDeFiltros />;
+  return <BarraDeFiltros pagina={pagina} {...resto} />;
 }

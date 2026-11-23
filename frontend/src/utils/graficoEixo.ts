@@ -71,8 +71,15 @@ export function rotuloDoEixo(partes: readonly string[], rotulo: string, orcament
  *   altura (`orcamentoPorAltura`). É esse texto que ocupa a diagonal; usar o rótulo
  *   inteiro que o `title` guarda faria o passo crescer por um texto que nunca aparece.
  */
+/** Sem saber o tamanho do rótulo, o passo sai só da largura da banda. */
+function passoSoPelaBanda(banda: number): number {
+  if (banda < 30) return 3;
+  if (banda < 44) return 2;
+  return 1;
+}
+
 export function passoDoEixo(banda: number, caracteres?: number): number {
-  if (caracteres === undefined) return banda < 30 ? 3 : banda < 44 ? 2 : 1;
+  if (caracteres === undefined) return passoSoPelaBanda(banda);
   const alvo = Math.max(1, caracteres);
   for (const passo of [1, 2]) {
     if (Math.floor((banda * passo) / COS_45 / PX_POR_CARACTERE) >= alvo) return passo;

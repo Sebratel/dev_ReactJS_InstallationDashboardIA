@@ -72,6 +72,86 @@ function larguraDoChip(texto: string): number {
   return texto.length * FONTE_DO_CHIP * 0.58 + 14;
 }
 
+/** A largura que um texto ocupa nesta fonte, com a folga das bordas. */
+function larguraDoTexto(texto: string): number {
+  return texto.length * FONTE_DO_ROTULO * 0.58 + 4;
+}
+
+/**
+ * O número de uma fatia cabe nela?
+ *
+ * `dentro` ainda precisa de ALTURA: numa fatia de 8px o número sai por fora dela e passa
+ * a mentir sobre a qual série pertence.
+ */
+function numeroCabeNaFatia(
+  texto: string,
+  larguraDaFatia: number,
+  altura: number,
+  modo: 'fatia' | 'dentro',
+): boolean {
+  if (larguraDoTexto(texto) > larguraDaFatia + VAO) return false;
+  return modo === 'fatia' || altura >= FONTE_DO_ROTULO + 4;
+}
+
+/** O número do chip de uma categoria: o total da pilha, ou o valor da série única. */
+function totalDaCategoria(
+  empilha: boolean,
+  areas: readonly { valores: readonly (number | null)[] }[],
+  i: number,
+  somaEm: (i: number) => number | null,
+): number | null {
+  if (empilha) return somaEm(i);
+  if (areas.length !== 1) return null;
+  return areas[0]!.valores[i] ?? null;
+}
+
+/** A geometria de uma fatia: onde ela começa, onde termina e quanto ocupa. */
+interface GeometriaDaFatia {
+  cima: number;
+  esquerda: number;
+  altura: number;
+}
+
+/**
+ * Onde desenhar a fatia de uma série nesta categoria.
+ *
+ * **Empilhado e lado a lado são contas diferentes.** Empilhado cresce a partir do que já
+ * foi empilhado (`acumulado`, que esta função avança); lado a lado reparte a largura da
+ * marca entre as séries. O vão entre fatias sai da altura empilhada, nunca da posição —
+ * tirar dos dois abriria um buraco que cresce a cada série.
+ */
+function geometriaDaFatia(opcoes: {
+  valor: number;
+  geo: {
+    topo: number;
+    alturaDoPlot: number;
+    larguraDaFatia: number;
+    larguraDaMarca: number;
+    y: (valor: number) => number;
+    xMeio: (categoria: number) => number;
+  };
+  base: number;
+  empilha: boolean;
+  acumulado: { alto: number };
+  categoria: number;
+  serie: number;
+}): GeometriaDaFatia {
+  const { valor, geo, base, empilha, acumulado, categoria, serie } = opcoes;
+  const alturaCrua = (valor / geo.topo) * geo.alturaDoPlot;
+
+  if (empilha) {
+    const alto = Math.max(1, alturaCrua - VAO);
+    const cima = base - acumulado.alto - alto;
+    acumulado.alto += alturaCrua;
+    return { cima, esquerda: geo.xMeio(categoria) - geo.larguraDaFatia / 2, altura: alto };
+  }
+
+  const cima = geo.y(valor);
+  const esquerda =
+    geo.xMeio(categoria) - geo.larguraDaMarca / 2 + serie * (geo.larguraDaFatia + VAO);
+  return { cima, esquerda, altura: Math.max(1, base - cima) };
+}
+
 export function ColunasDoGrafico(props: {
   categorias: readonly { rotulo: string }[];
   areas: readonly SerieDesenhada[];
@@ -123,14 +203,15 @@ export function ColunasDoGrafico(props: {
         const marcas = areas.map((s, k) => {
           const v = valorDesenhado(s.valores[i] ?? null, i);
           if (v === null || v === 0) return null;
-          const alturaCrua = (v / geo.topo) * geo.alturaDoPlot;
-          const alto = Math.max(1, alturaCrua - (empilha ? VAO : 0));
-          const cima = empilha ? base - acumulado.alto - alto : geo.y(v);
-          if (empilha) acumulado.alto += alturaCrua;
-          const esquerda = empilha
-            ? geo.xMeio(i) - geo.larguraDaFatia / 2
-            : geo.xMeio(i) - geo.larguraDaMarca / 2 + k * (geo.larguraDaFatia + VAO);
-          const altura = Math.max(1, empilha ? alto : base - cima);
+          const { cima, esquerda, altura } = geometriaDaFatia({
+            valor: v,
+            geo,
+            base,
+            empilha,
+            acumulado,
+            categoria: i,
+            serie: k,
+          });
           topoDaCategoria = Math.min(topoDaCategoria, cima);
           const cor = unica ? corDaColunaPorValor(v, min, max) : s.cor;
           const titulo = `${c.rotulo} · ${s.nome}: ${fmt(s.valores[i] ?? null)}`;
@@ -139,18 +220,13 @@ export function ColunasDoGrafico(props: {
           // valor da parte); os demais escrevem o valor cru, não o da pilha.
           if (modo === 'fatia' || modo === 'dentro') {
             const texto = percentual ? `${Math.round(v)}%` : fmt(s.valores[i] ?? null);
-            const meio = esquerda + geo.larguraDaFatia / 2;
-            const cabeNaLargura =
-              texto.length * FONTE_DO_ROTULO * 0.58 + 4 <= geo.larguraDaFatia + VAO;
-            // `dentro` ainda precisa de ALTURA: numa fatia de 8px o número sai por fora
-            // dela e passa a mentir sobre a qual série pertence.
-            const cabeNaAltura = modo === 'fatia' || altura >= FONTE_DO_ROTULO + 4;
-            if (texto && cabeNaLargura && cabeNaAltura) {
+            if (texto && numeroCabeNaFatia(texto, geo.larguraDaFatia, altura, modo)) {
+              const dentro = modo === 'dentro';
               porFatia.push({
                 chave: s.chave,
-                x: meio,
-                y: modo === 'dentro' ? cima + altura / 2 : cima - 4,
-                dentro: modo === 'dentro',
+                x: esquerda + geo.larguraDaFatia / 2,
+                y: dentro ? cima + altura / 2 : cima - 4,
+                dentro,
                 texto,
               });
             }
@@ -177,11 +253,7 @@ export function ColunasDoGrafico(props: {
           );
         });
         // O chip: o valor da série única, ou o total da pilha.
-        const total = empilha
-          ? somaEm(i)
-          : areas.length === 1
-            ? (areas[0]!.valores[i] ?? null)
-            : null;
+        const total = totalDaCategoria(empilha, areas, i, somaEm);
         const texto = total ? fmt(total) : '';
         // O chip precisa de ~33px para três dígitos; o mesmo número SEM chip precisa de
         // ~21px. Num mês inteiro num cartão de meia largura a banda fica em ~25px, e a
@@ -189,7 +261,7 @@ export function ColunasDoGrafico(props: {
         // continua sendo a primeira escolha — é mais legível sobre a coluna colorida —,
         // e o texto puro é o que sobra antes de desistir do número.
         const cabeOChip = larguraDoChip(texto) <= geo.banda;
-        const cabeOTexto = texto.length * FONTE_DO_ROTULO * 0.58 + 4 <= geo.banda;
+        const cabeOTexto = larguraDoTexto(texto) <= geo.banda;
         return (
           <g
             key={i}
