@@ -53,52 +53,85 @@ interface Semanas {
   maior: number;
 }
 
-function constroiSemanas(d: DadosDeMatriz): Semanas | null {
-  if (d.chavesDeColuna.length !== 1 || d.tiposDeColuna[0] !== 'date') return null;
-  if (d.colunas.length === 0) return null;
-  if (d.linhas.length !== d.linhasTotais) return null;
+const DIAS_NA_SEMANA = 7;
 
-  const df = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', timeZone: 'UTC' });
+/** O formato do rótulo de cada dia ("05 nov"). */
+const formatoDoDia = new Intl.DateTimeFormat('pt-BR', {
+  day: '2-digit',
+  month: 'short',
+  timeZone: 'UTC',
+});
+
+/** A soma de uma coluna da matriz — o total daquele dia, somando todas as linhas. */
+function somaDaColuna(d: DadosDeMatriz, coluna: number): number {
+  let total = 0;
+  for (let linha = 0; linha < d.linhas.length; linha++) {
+    const valor = d.celulas[linha]?.[coluna]?.[0];
+    if (typeof valor === 'number') total += valor;
+  }
+  return total;
+}
+
+/**
+ * O total de cada dia do mês, lido das colunas de data.
+ *
+ * `null` quando a matriz cobre MAIS DE UM MÊS: a grade é de um mês só, e juntar dois
+ * daria um calendário em que o dia 3 soma dois meses diferentes.
+ */
+function totaisPorDia(
+  d: DadosDeMatriz,
+): { porDia: Map<number, number>; ano: number; mes: number } | null {
   const porDia = new Map<number, number>();
   let anoMes: { ano: number; mes: number } | null = null;
 
-  for (let j = 0; j < d.colunas.length; j++) {
-    const bruto = d.colunas[j]?.[0];
+  for (let coluna = 0; coluna < d.colunas.length; coluna++) {
+    const bruto = d.colunas[coluna]?.[0];
     if (bruto == null) continue;
     const data = new Date(bruto as string);
     if (Number.isNaN(data.getTime())) continue;
+
     const ano = data.getUTCFullYear();
     const mes = data.getUTCMonth();
     if (anoMes && (anoMes.ano !== ano || anoMes.mes !== mes)) return null;
     anoMes = { ano, mes };
 
-    let total = 0;
-    for (let i = 0; i < d.linhas.length; i++) {
-      const v = d.celulas[i]?.[j]?.[0];
-      if (typeof v === 'number') total += v;
-    }
-    porDia.set(data.getUTCDate(), total);
+    porDia.set(data.getUTCDate(), somaDaColuna(d, coluna));
   }
 
-  if (!anoMes) return null;
+  return anoMes ? { porDia, ...anoMes } : null;
+}
 
-  const primeiroDiaDaSemana = new Date(Date.UTC(anoMes.ano, anoMes.mes, 1)).getUTCDay();
-  const ultimoDia = new Date(Date.UTC(anoMes.ano, anoMes.mes + 1, 0)).getUTCDate();
+/** A grade do mês: os vazios antes do dia 1, um por dia, e os vazios até fechar a semana. */
+function celulasDoMes(ano: number, mes: number, porDia: ReadonlyMap<number, number>): Semanas {
+  const primeiroDiaDaSemana = new Date(Date.UTC(ano, mes, 1)).getUTCDay();
+  const ultimoDia = new Date(Date.UTC(ano, mes + 1, 0)).getUTCDate();
 
   const celulas: (CelulaDoDia | null)[] = new Array(primeiroDiaDaSemana).fill(null);
   let maior = 0;
   for (let dia = 1; dia <= ultimoDia; dia++) {
     const valor = porDia.get(dia) ?? 0;
     maior = Math.max(maior, valor);
-    celulas.push({
-      dia,
-      valor,
-      rotulo: df.format(new Date(Date.UTC(anoMes.ano, anoMes.mes, dia))),
-    });
+    celulas.push({ dia, valor, rotulo: formatoDoDia.format(new Date(Date.UTC(ano, mes, dia))) });
   }
-  while (celulas.length % 7 !== 0) celulas.push(null);
+  while (celulas.length % DIAS_NA_SEMANA !== 0) celulas.push(null);
 
   return { celulas, maior };
+}
+
+/**
+ * A matriz vira calendário — ou não vira.
+ *
+ * Recusa sozinha o que não dá grade de mês: coluna que não é data, matriz sem coluna,
+ * matriz ainda incompleta (o detalhe chega paginado) e mais de um mês.
+ */
+function constroiSemanas(d: DadosDeMatriz): Semanas | null {
+  if (d.chavesDeColuna.length !== 1 || d.tiposDeColuna[0] !== 'date') return null;
+  if (d.colunas.length === 0) return null;
+  if (d.linhas.length !== d.linhasTotais) return null;
+
+  const totais = totaisPorDia(d);
+  if (!totais) return null;
+  return celulasDoMes(totais.ano, totais.mes, totais.porDia);
 }
 
 export function Calendario({ dados }: { dados: DadosDeMatriz }) {

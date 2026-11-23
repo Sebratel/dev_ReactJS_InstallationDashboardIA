@@ -43,6 +43,27 @@ const PONTO: Record<
   },
 };
 
+/**
+ * O que a barra diz sobre a idade do dado: a hora do tempo real quando ele está
+ * acompanhando, senão há quanto tempo o snapshot foi lido.
+ */
+function idadeDoDado(
+  horaDoTempoReal: string | null | undefined,
+  dadoDe: string | null | undefined,
+): string {
+  if (horaDoTempoReal) return `ao vivo · ${horaDoTempoReal}`;
+  return dadoDe ? haQuanto(dadoDe) : '—';
+}
+
+/** O que o mouse revela ali: o aviso de saúde, quando há, ou a data do snapshot. */
+function tituloDaIdade(
+  avisoSaude: { temAviso: boolean; mensagem: string } | undefined,
+  dadoDe: string | null | undefined,
+): string | undefined {
+  if (avisoSaude?.temAviso) return avisoSaude.mensagem;
+  return dadoDe ? `Dado de ${dataHora(dadoDe)}` : undefined;
+}
+
 export function AppShell(props: {
   paginas: DashboardDaLista[];
   atual: string | null;
@@ -78,12 +99,7 @@ export function AppShell(props: {
   const ponto = PONTO[nivel];
   // O texto acompanha o ponto: "ao vivo" ao lado de um ponto vermelho dizia duas coisas
   // opostas. A explicação inteira está no aviso logo abaixo da barra de filtros.
-  const quando =
-    (props.ultimaAtualizacaoRealtime
-      ? `ao vivo · ${props.ultimaAtualizacaoRealtime}`
-      : props.dadoDe
-        ? haQuanto(props.dadoDe)
-        : '—') + ponto.sufixo;
+  const quando = idadeDoDado(props.ultimaAtualizacaoRealtime, props.dadoDe) + ponto.sufixo;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -112,13 +128,7 @@ export function AppShell(props: {
           />
           <span
             className={cn(SOME_ESTREITO, ponto.texto)}
-            title={
-              props.avisoSaude?.temAviso
-                ? props.avisoSaude.mensagem
-                : props.dadoDe
-                  ? `Dado de ${dataHora(props.dadoDe)}`
-                  : undefined
-            }
+            title={tituloDaIdade(props.avisoSaude, props.dadoDe)}
           >
             {quando}
           </span>

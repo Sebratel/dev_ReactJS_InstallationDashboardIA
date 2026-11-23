@@ -34,6 +34,16 @@ import { AcoesDoDialogo, Dialogo } from '../ui/Dialogo.tsx';
 import { Nota } from '../ui/Nota.tsx';
 import { GatilhoDoFiltro } from './GatilhoDoFiltro.tsx';
 
+/**
+ * O que o gatilho do filtro mostra: "todos", o próprio valor quando é um só, ou a
+ * contagem. Mostrar o valor sozinho é o que deixa a barra legível num print.
+ */
+function resumoDaSelecao(selecao: readonly Valor[], tipo: TipoDeValor): string {
+  if (selecao.length === 0) return 'todos';
+  if (selecao.length === 1) return rotulo(selecao[0]!, tipo);
+  return `${selecao.length} selecionados`;
+}
+
 export function Segmentacao(props: {
   pagina: string;
   spec: SegmentacaoSpec;
@@ -70,12 +80,7 @@ export function Segmentacao(props: {
 
   const tipoDaColuna: TipoDeValor = opcoes?.find((o) => o.tipo !== null)?.tipo ?? null;
 
-  const resumo =
-    props.selecao.length === 0
-      ? 'todos'
-      : props.selecao.length === 1
-        ? rotulo(props.selecao[0]!, tipoDaColuna)
-        : `${props.selecao.length} selecionados`;
+  const resumo = resumoDaSelecao(props.selecao, tipoDaColuna);
 
   return (
     <GatilhoDoFiltro

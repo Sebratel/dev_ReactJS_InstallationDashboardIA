@@ -16,6 +16,7 @@
 // `clicados` entra pela URL, que é texto: um array novo com o mesmo conteúdo não muda a
 // chave, que era o motivo de ele ficar fora das dependências do efeito antigo.
 
+import { textoDoErro } from '../utils/erroDaTela.ts';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
   chavesDeConsulta,
@@ -74,7 +75,7 @@ export function useVisualSobDemanda(
   return {
     estado: q.isFetching ? 'carregando' : 'parado',
     pronto: q.data ?? null,
-    erro: q.error ? (q.error instanceof Error ? q.error.message : String(q.error)) : null,
+    erro: q.error ? textoDoErro(q.error) : null,
     tentarDeNovo: () => void q.refetch(),
   };
 }

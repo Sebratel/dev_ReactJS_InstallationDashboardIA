@@ -15,14 +15,21 @@ import { Botao } from '../ui/Botao.tsx';
 import { Cartao, Erro } from '../ui/Cartao.tsx';
 import { Nota } from '../ui/Nota.tsx';
 
-/** "Gestão Field" → "gestao-field": o identificador sai do nome. */
+/**
+ * "Gestão Field" → "gestao-field": o identificador sai do nome.
+ *
+ * O `-+` das pontas virou `-`: depois do passo anterior toda sequência de caractere
+ * fora de `[a-z0-9]` já virou UM hífen, então nunca há dois seguidos para aparar. A
+ * forma antiga, `/^-+|-+$/g`, custava O(n²) num nome só de pontuação, por backtracking
+ * (regra `sonarjs/super-linear-regex`).
+ */
 export function idDoPerfil(nome: string): string {
   return nome
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(/^-|-$/g, '')
     .slice(0, 64);
 }
 

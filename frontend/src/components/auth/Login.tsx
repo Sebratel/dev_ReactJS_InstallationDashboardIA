@@ -17,20 +17,11 @@
 // `/api/*` — a mesma tela React de sempre, só que desenhando isto em vez do
 // dashboard.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Erro } from '../ui/Cartao.tsx';
-import {
-  DOMINIO_CORPORATIVO,
-  GOOGLE_CLIENT_ID,
-  TEM_FIREBASE,
-  TOKEN_INTERNO,
-} from '../../config.ts';
-import {
-  abreSessaoFirebase,
-  abreSessaoGoogle,
-  abreSessaoInterna,
-} from '../../services/authService.ts';
-import { carregaScriptGis } from '../../services/googleIdentity.ts';
+import { DOMINIO_CORPORATIVO } from '../../config.ts';
+import { useBotaoDoGoogle } from '../../hooks/useBotaoDoGoogle.ts';
+import { caminhosDeEntrada, useEntrada } from '../../hooks/useEntrada.ts';
 import { Lock, RefreshCw, Wrench } from 'lucide-react';
 import { cn } from '../../utils/cn.ts';
 
@@ -40,24 +31,9 @@ type LoginProps = {
 
 export function Login({ aoLogar }: LoginProps) {
   const botaoRef = useRef<HTMLDivElement>(null);
-  const [erro, setErro] = useState<string | null>(null);
-  const [entrando, setEntrando] = useState(false);
-  // TRÊS caminhos, nesta ordem de precedência, e nunca dois na tela ao mesmo
-  // tempo: Firebase (o de produção desde 16/09/2026), Google Identity Services
-  // puro (o anterior, mantido para ambiente que ainda não migrou) e o botão de
-  // desenvolvimento por `TOKEN_INTERNO`. Os três terminam igual — cookie de
-  // sessão emitido pela nossa API — então `App.tsx` não sabe qual foi usado.
-  const firebase = TEM_FIREBASE;
-  const clientId = firebase ? '' : GOOGLE_CLIENT_ID;
-  const tokenInterno = TOKEN_INTERNO;
-  const dominio = DOMINIO_CORPORATIVO;
-  // Sem nenhum caminho de login, é um erro de AMBIENTE — derivado aqui, e não gravado
-  // por um efeito (fase 5: `set-state-in-effect` acusa o render extra).
-  const erroDeConfiguracao =
-    !firebase && !clientId && !tokenInterno
-      ? 'Login não configurado neste ambiente ' +
-        '(VITE_FIREBASE_PROJECT_ID, VITE_GOOGLE_CLIENT_ID e TOKEN_INTERNO ausentes).'
-      : null;
+  const { firebase, clientId, tokenInterno, erroDeConfiguracao } = caminhosDeEntrada();
+  const entrada = useEntrada(aoLogar);
+
   // O callback do Google é registrado uma vez; ele chama o `aoLogar` mais recente por
   // aqui, em vez de pôr `aoLogar` nas dependências e reinicializar o botão a cada render.
   const aoLogarRef = useRef(aoLogar);
@@ -65,87 +41,14 @@ export function Login({ aoLogar }: LoginProps) {
     aoLogarRef.current = aoLogar;
   });
 
-  /** O login pelo Firebase: janela do Google, ID token, e a troca por sessão
-   *  nossa em `/auth/firebase`. O token do Firebase morre aqui — não é ele que
-   *  autentica `/api/*`, é o cookie que esta chamada devolve. */
-  const loginFirebase = async () => {
-    setErro(null);
-    setEntrando(true);
-    let traduzErro: ((err: unknown) => string | null) | null = null;
-    try {
-      // O SDK pesa ~100 kB minificado e só é necessário depois deste clique.
-      const firebaseAuth = await import('../../services/firebaseAuth.ts');
-      traduzErro = firebaseAuth.mensagemDeErro;
-      const idToken = await firebaseAuth.entraComGoogle(dominio);
-      const recusa = await abreSessaoFirebase(idToken);
-      if (recusa) {
-        setErro(recusa);
-        return;
-      }
-      aoLogar();
-    } catch (err) {
-      // `null` é o caso de quem fechou a janela — desistir não é erro.
-      const mensagem = traduzErro?.(err) ?? 'Não foi possível entrar com o Google.';
-      if (mensagem) setErro(mensagem);
-    } finally {
-      setEntrando(false);
-    }
-  };
-
-  // Bypass de login em modo dev: usa /auth/interno com TOKEN_INTERNO.
-  const loginInterno = async () => {
-    setErro(null);
-    setEntrando(true);
-    try {
-      const recusa = await abreSessaoInterna(tokenInterno);
-      if (recusa) {
-        setErro(recusa);
-        return;
-      }
-      aoLogar();
-    } catch {
-      setErro('Não foi possível falar com o servidor.');
-    } finally {
-      setEntrando(false);
-    }
-  };
-
-  useEffect(() => {
-    // Com Firebase configurado, este efeito não tem o que fazer: o botão é
-    // nosso, o script do Google vem do SDK, e nada precisa ser injetado no DOM.
-    if (firebase) return;
-    // Sem Google Client ID: se há token interno, o botão de dev cuida; senão, é o
-    // `erroDeConfiguracao`.
-    if (!clientId) return;
-    let cancelado = false;
-    carregaScriptGis()
-      .then(() => {
-        if (cancelado || !window.google || !botaoRef.current) return;
-        window.google.accounts.id.initialize({
-          client_id: clientId,
-          callback: (resposta) => {
-            abreSessaoGoogle(resposta.credential)
-              .then((recusa) => {
-                if (recusa) {
-                  setErro(recusa);
-                  return;
-                }
-                aoLogarRef.current();
-              })
-              .catch(() => setErro('Não foi possível falar com o servidor.'));
-          },
-        });
-        window.google.accounts.id.renderButton(botaoRef.current, {
-          theme: 'outline',
-          size: 'large',
-          width: 280,
-        });
-      })
-      .catch((err: unknown) => setErro(err instanceof Error ? err.message : String(err)));
-    return () => {
-      cancelado = true;
-    };
-  }, [clientId, firebase]);
+  // O caminho anterior ao Firebase, para ambiente que ainda não migrou.
+  useBotaoDoGoogle({
+    destino: botaoRef,
+    clientId,
+    ligado: !firebase,
+    aoEntrar: () => aoLogarRef.current(),
+    aoFalhar: entrada.mostraErro,
+  });
 
   return (
     <div className="login">
@@ -192,7 +95,7 @@ export function Login({ aoLogar }: LoginProps) {
         </section>
 
         <section className="flex justify-center">
-          <div className={cn('login-card', (erro ?? erroDeConfiguracao) && 'tremer')}>
+          <div className={cn('login-card', (entrada.erro ?? erroDeConfiguracao) && 'tremer')}>
             <header className="grid gap-[7px]">
               <span className="justify-self-start rounded-full border border-pbi-gold bg-pbi-aviso-bg px-[11px] py-[5px] text-[10px] font-extrabold tracking-[0.18em] text-pbi-gold-600 uppercase">
                 INST · Relatório Instalação
@@ -211,7 +114,7 @@ export function Login({ aoLogar }: LoginProps) {
               </div>
               <div>
                 <p className="m-0 mb-[2px] text-[13.5px] text-pbi-ink">
-                  Domínio liberado: <b>@{dominio || 'sebratel.com.br'}</b>
+                  Domínio liberado: <b>@{DOMINIO_CORPORATIVO || 'sebratel.com.br'}</b>
                 </p>
                 <span className="text-[11.5px] text-pbi-muted">
                   Não é a sua conta? Saia do Google antes de entrar.
@@ -219,20 +122,22 @@ export function Login({ aoLogar }: LoginProps) {
               </div>
             </div>
 
-            {(erro ?? erroDeConfiguracao) ? <Erro>{erro ?? erroDeConfiguracao}</Erro> : null}
+            {(entrada.erro ?? erroDeConfiguracao) ? (
+              <Erro>{entrada.erro ?? erroDeConfiguracao}</Erro>
+            ) : null}
 
             {/* Firebase: botão nosso, porque o SDK não desenha nenhum. */}
             {firebase ? (
               <button
                 type="button"
                 className="botao-google"
-                onClick={loginFirebase}
-                disabled={entrando}
+                onClick={() => void entrada.comGoogle()}
+                disabled={entrada.entrando}
               >
                 <span className="marca">
-                  {entrando ? <RefreshCw size={16} className="girando" /> : <MarcaGoogle />}
+                  {entrada.entrando ? <RefreshCw size={16} className="girando" /> : <MarcaGoogle />}
                 </span>
-                {entrando ? 'Autenticando…' : 'Entrar com Google'}
+                {entrada.entrando ? 'Autenticando…' : 'Entrar com Google'}
               </button>
             ) : null}
             {/* O botão do Google Identity Services — só quando NÃO há Firebase e há Client ID. */}
@@ -244,13 +149,13 @@ export function Login({ aoLogar }: LoginProps) {
               <button
                 type="button"
                 className="botao-google"
-                onClick={loginInterno}
-                disabled={entrando}
+                onClick={() => void entrada.comTokenInterno(tokenInterno)}
+                disabled={entrada.entrando}
               >
                 <span className="marca">
                   <Wrench size={15} />
                 </span>
-                {entrando ? 'Entrando…' : 'Entrar (modo dev)'}
+                {entrada.entrando ? 'Entrando…' : 'Entrar (modo dev)'}
               </button>
             ) : null}
 

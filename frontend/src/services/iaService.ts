@@ -6,6 +6,7 @@
 import { codificaFiltro } from '../../../backend/packages/widget-engine/src/filtro-url.ts';
 import { chaveVisualIa, ehVisualComIa } from '../../../backend/api/src/ia/visuais-ia.ts';
 import type { FiltroDaTela } from './dashboardService.ts';
+import { comConsulta } from '../utils/url.ts';
 
 export { chaveVisualIa };
 
@@ -82,8 +83,8 @@ export function urlDeInsightsVisual(
   for (const c of clicados) {
     p.append('clicado', JSON.stringify({ tabela: c.tabela, coluna: c.coluna }));
   }
-  const q = p.toString();
-  return `/api/dashboards/${encodeURIComponent(pagina)}/insights/${encodeURIComponent(visualId)}${q ? `?${q}` : ''}`;
+  const caminho = `/api/dashboards/${encodeURIComponent(pagina)}/insights/${encodeURIComponent(visualId)}`;
+  return comConsulta(caminho, p);
 }
 
 export async function pedeInsightsDoVisual(

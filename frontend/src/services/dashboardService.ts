@@ -13,6 +13,7 @@
 import { codificaFiltro } from '../../../backend/packages/widget-engine/src/filtro-url.ts';
 import type { TipoDeValor } from '../utils/formato.ts';
 import type { RespostaSaude } from '../utils/avisoSaude.ts';
+import { comConsulta, comParametroExtra } from '../utils/url.ts';
 // Tipo só — `backend/tools/layout` é consumido aqui só pelo formato do contrato, sem custo de
 // bundle (é `import type`, o esbuild apaga por completo). Ver docs/PLANO-LAYOUT-V1.md §6.
 import type {
@@ -260,8 +261,7 @@ export function urlDaPagina(
   if (opcoes.busca) p.set('busca', opcoes.busca);
   // Idem: sem ordem escolhida, nenhum parâmetro — a chave tem de ser a da abertura.
   if (opcoes.ordem) p.set('ordem', `${opcoes.ordem.coluna}:${opcoes.ordem.desc ? 'desc' : 'asc'}`);
-  const q = p.toString();
-  return `/api/dashboards/${encodeURIComponent(id)}${q ? `?${q}` : ''}`;
+  return comConsulta(`/api/dashboards/${encodeURIComponent(id)}`, p);
 }
 
 /**
@@ -351,54 +351,88 @@ export async function pega<T>(
   signal?: AbortSignal,
   deps: DependenciasDePedido = {},
 ): Promise<T> {
+  const resposta = await buscaComRetentativa(url, signal, deps);
+  const corpo: unknown = await resposta.json().catch(() => null);
+  if (!resposta.ok) throw erroDaResposta(resposta.status, corpo);
+  return corpo as T;
+}
+
+/**
+ * O `fetch` com as novas tentativas de `ESPERAS_DE_NOVA_TENTATIVA_MS`.
+ *
+ * Repete em dois casos: a conexão falhou (a API reiniciando) ou ela respondeu um status
+ * de `FORA_DO_AR`. Cancelamento de quem chamou e estouro do teto de tempo saem na hora —
+ * repetir não ajudaria nenhum dos dois.
+ */
+async function buscaComRetentativa(
+  url: string,
+  signal: AbortSignal | undefined,
+  deps: DependenciasDePedido,
+): Promise<Response> {
   const buscar = deps.fetch ?? fetch;
   const dorme = deps.dorme ?? dormeAbortavel;
   const esperas = deps.esperasMs ?? ESPERAS_DE_NOVA_TENTATIVA_MS;
   const tetoMs = deps.tetoMs ?? TETO_PEDIDO_MS;
 
-  let resp: Response;
   for (let tentativa = 0; ; tentativa++) {
     const espera = esperas[tentativa];
-    const teto = AbortSignal.timeout(tetoMs);
-    const sinal = signal ? AbortSignal.any([signal, teto]) : teto;
-    try {
-      resp = await buscar(url, { signal: sinal });
-    } catch (err) {
-      if (signal?.aborted) throw err;
-      if (teto.aborted) {
-        throw new Error(`A API não respondeu em ${Math.round(tetoMs / 1000)} s (${url}).`, {
-          cause: err,
-        });
-      }
-      if (espera !== undefined) {
-        await dorme(espera, signal);
-        continue;
-      }
-      throw new Error(
-        `Sem conexão com a API (${url}) — ela pode estar reiniciando. Tente de novo em instantes.`,
-        {
-          cause: err,
-        },
-      );
-    }
-    if (FORA_DO_AR.has(resp.status) && espera !== undefined) {
-      await dorme(espera, signal);
-      continue;
-    }
-    break;
+    const resposta = await umaTentativa(url, signal, tetoMs, espera !== undefined, buscar);
+    if (resposta) return resposta;
+    // `umaTentativa` só devolve `null` quando vale repetir — e aí há espera.
+    await dorme(espera!, signal);
   }
-  const corpo: unknown = await resp.json().catch(() => null);
-  if (!resp.ok) {
-    const erro =
-      corpo && typeof corpo === 'object' && 'erro' in corpo
-        ? String((corpo as { erro: unknown }).erro)
-        : // Sem o endereço do pedido: a mensagem aparece na tela e não deve guiar ninguém.
-          'Não foi possível carregar este dado agora. Tente novamente em instantes.';
-    // `status` vai junto do erro — é como `App.tsx` distingue "sem sessão"
-    // (401, mostra a tela de login) de qualquer outra falha (mostra o erro).
-    throw Object.assign(new Error(erro), { status: resp.status });
+}
+
+/**
+ * Uma tentativa de pedido: a resposta, ou `null` quando vale repetir.
+ *
+ * Cancelamento de quem chamou e estouro do teto de tempo saem como erro na hora —
+ * repetir não ajudaria nenhum dos dois. Falha de conexão e status de `FORA_DO_AR` só
+ * viram erro quando as tentativas acabaram (`podeRepetir` falso).
+ */
+async function umaTentativa(
+  url: string,
+  signal: AbortSignal | undefined,
+  tetoMs: number,
+  podeRepetir: boolean,
+  buscar: typeof fetch,
+): Promise<Response | null> {
+  const teto = AbortSignal.timeout(tetoMs);
+  const sinal = signal ? AbortSignal.any([signal, teto]) : teto;
+  try {
+    const resposta = await buscar(url, { signal: sinal });
+    if (FORA_DO_AR.has(resposta.status) && podeRepetir) return null;
+    return resposta;
+  } catch (problema) {
+    if (signal?.aborted) throw problema;
+    if (teto.aborted) throw erroDeTetoDeTempo(url, tetoMs, problema);
+    if (!podeRepetir) throw erroDeConexao(url, problema);
+    return null;
   }
-  return corpo as T;
+}
+
+const erroDeTetoDeTempo = (url: string, tetoMs: number, causa: unknown) =>
+  new Error(`A API não respondeu em ${Math.round(tetoMs / 1000)} s (${url}).`, { cause: causa });
+
+const erroDeConexao = (url: string, causa: unknown) =>
+  new Error(
+    `Sem conexão com a API (${url}) — ela pode estar reiniciando. Tente de novo em instantes.`,
+    { cause: causa },
+  );
+
+/**
+ * O erro de uma resposta que não veio `ok`.
+ *
+ * `status` vai junto — é como `App.tsx` distingue "sem sessão" (401, mostra a tela de
+ * login) de qualquer outra falha (mostra o erro).
+ */
+function erroDaResposta(status: number, corpo: unknown): Error {
+  const temExplicacao = corpo !== null && typeof corpo === 'object' && 'erro' in corpo;
+  const mensagem = temExplicacao
+    ? String((corpo as { erro: unknown }).erro)
+    : // Sem o endereço do pedido: a mensagem aparece na tela e não deve guiar ninguém.
+      'Não foi possível carregar este dado agora. Tente novamente em instantes.';
+  return Object.assign(new Error(mensagem), { status });
 }
 
 /** `true` quando `err` veio de um pedido que a API recusou por falta de sessão
@@ -469,7 +503,7 @@ export const pegaPagina = (
   origem?: OrigemDePagina,
 ): Promise<PaginaCalculada> => {
   const url = urlDaPagina(id, filtros, opcoes, clicados);
-  return pega(origem ? `${url}${url.includes('?') ? '&' : '?'}origem=${origem}` : url, signal);
+  return pega(origem ? comParametroExtra(url, 'origem', origem) : url, signal);
 };
 
 /** O layout como a API o entrega: o YAML mais as segmentações da página, que são da spec

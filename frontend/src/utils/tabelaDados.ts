@@ -18,22 +18,33 @@ export function ordenaLinhas<L extends Linha>(
 ): L[] {
   const resultado = [...linhas];
   if (coluna === null) return resultado;
-  resultado.sort((a, b) => {
-    const vA = a[coluna];
-    const vB = b[coluna];
-    if (vA === null || vA === undefined) return 1;
-    if (vB === null || vB === undefined) return -1;
-    if (typeof vA === 'number' && typeof vB === 'number') return desc ? vB - vA : vA - vB;
-    if (vA instanceof Date && vB instanceof Date) {
-      return desc ? vB.getTime() - vA.getTime() : vA.getTime() - vB.getTime();
-    }
-    const sA = String(vA).toLowerCase();
-    const sB = String(vB).toLowerCase();
-    if (sA < sB) return desc ? 1 : -1;
-    if (sA > sB) return desc ? -1 : 1;
-    return 0;
-  });
+  resultado.sort((linhaA, linhaB) => comparaCelulas(linhaA[coluna], linhaB[coluna], desc));
   return resultado;
+}
+
+/**
+ * Compara duas células da mesma coluna.
+ *
+ * **Vazio vai sempre para o fim**, nas duas direções: quem ordena por uma coluna quer
+ * ver os valores dela, não os buracos. Número e data comparam pelo próprio valor; o
+ * resto, como texto sem distinguir maiúscula.
+ */
+function comparaCelulas(valorA: unknown, valorB: unknown, desc: boolean): number {
+  if (valorA === null || valorA === undefined) return 1;
+  if (valorB === null || valorB === undefined) return -1;
+
+  if (typeof valorA === 'number' && typeof valorB === 'number') {
+    return desc ? valorB - valorA : valorA - valorB;
+  }
+  if (valorA instanceof Date && valorB instanceof Date) {
+    return desc ? valorB.getTime() - valorA.getTime() : valorA.getTime() - valorB.getTime();
+  }
+
+  const textoA = String(valorA).toLowerCase();
+  const textoB = String(valorB).toLowerCase();
+  if (textoA === textoB) return 0;
+  const crescente = textoA < textoB ? -1 : 1;
+  return desc ? -crescente : crescente;
 }
 
 /**

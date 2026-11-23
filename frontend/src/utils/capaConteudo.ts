@@ -72,6 +72,15 @@ export function valorDoCard(visuais: readonly VisualCalculado[], id: string): st
  * de uma PROTOCOLOS GERAL de meia hora. Então vale a mais recente entre `ultimaCarga` e o
  * `confirmadoEm` do poller, e a cadência é a do poll quando ele está conferindo.
  */
+/** O status de um grupo de consultas: a pior situação entre elas manda. */
+export type StatusDoGrupo = 'falhou' | 'vencida' | 'ok';
+
+function statusDoGrupo(consultas: readonly { status?: string }[]): StatusDoGrupo {
+  if (consultas.some((consulta) => consulta.status === 'falhou')) return 'falhou';
+  if (consultas.some((consulta) => consulta.status === 'vencida')) return 'vencida';
+  return 'ok';
+}
+
 export function situacaoDaFonte(
   ids: readonly string[],
   saude: RespostaSaude | null,
@@ -79,11 +88,7 @@ export function situacaoDaFonte(
 ) {
   const qs = (saude?.refresh?.queries ?? []).filter((q) => ids.includes(q.id));
   if (qs.length === 0) return null;
-  const status = qs.some((q) => q.status === 'falhou')
-    ? 'falhou'
-    : qs.some((q) => q.status === 'vencida')
-      ? 'vencida'
-      : 'ok';
+  const status = statusDoGrupo(qs);
 
   const doPoller = new Map((saude?.realtime?.poller?.porQuery ?? []).map((p) => [p.query, p]));
   const grupos = new Map((saude?.agendador?.grupos ?? []).map((g) => [g.id, g.intervaloMinutos]));

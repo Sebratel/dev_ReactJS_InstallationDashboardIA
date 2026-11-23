@@ -53,56 +53,60 @@ export function ehColunaDeAno(nomeDaColuna: string | null | undefined): boolean 
   return /\bano$/i.test((nomeDaColuna ?? '').trim());
 }
 
+/** O resultado de um texto que a tela não trata como número. */
+const comoTexto = (texto: string): Formatado => ({ texto, numerico: false, vazio: false });
+/** O resultado de algo que a tela alinha à direita e trata como número. */
+const comoNumero = (texto: string): Formatado => ({ texto, numerico: true, vazio: false });
+
+/**
+ * Um valor da API como texto de tela.
+ *
+ * Só despacha por tipo: cada formato mora numa função própria. Antes os três ramos
+ * estavam aqui dentro, com as regras de época OLE, meia-noite e casas decimais
+ * misturadas — complexidade cognitiva 20 pelo SonarJS.
+ */
 export function formata(
-  v: unknown,
+  valor: unknown,
   tipo: TipoDeValor,
-  opts?: { semAgrupamento?: boolean; casas?: number | null },
+  opcoes?: { semAgrupamento?: boolean; casas?: number | null },
 ): Formatado {
-  if (v === null || v === undefined) return { texto: '—', numerico: false, vazio: true };
+  if (valor === null || valor === undefined) return { texto: '—', numerico: false, vazio: true };
 
-  if (opts?.semAgrupamento && tipo === 'number' && Number.isInteger(v)) {
-    return { texto: String(v), numerico: true, vazio: false };
+  if (opcoes?.semAgrupamento && tipo === 'number' && Number.isInteger(valor)) {
+    return comoNumero(String(valor));
   }
+  if (tipo === 'date') return formataData(valor);
+  if (tipo === 'number') return formataNumero(valor as number, opcoes?.casas);
+  if (tipo === 'boolean') return comoTexto(valor ? 'Sim' : 'Não');
+  return comoTexto(String(valor));
+}
 
-  if (tipo === 'date') {
-    const d = new Date(v as string);
-    // Data inválida não vira "Invalid Date" na tela: isso parece defeito da tela, e o
-    // defeito está no dado. Dizer o valor cru é o que deixa a causa achável.
-    if (Number.isNaN(d.getTime())) {
-      return { texto: `data inválida: ${String(v)}`, numerico: false, vazio: false };
-    }
-    // Campo só-de-hora: a origem é `time`, que o snapshot grava sobre a época OLE
-    // (1899-12-30). Mostrar "30/12/1899, 18:23" expõe um detalhe de armazenamento como
-    // se fosse a data do dado — aqui vale só a hora. Qualquer ano <= 1900 é época, não
-    // dado real desta operação.
-    if (d.getUTCFullYear() <= 1900) {
-      return { texto: dfHora.format(d), numerico: true, vazio: false };
-    }
-    // Meia-noite exata é data pura; qualquer hora e a hora importa. É o que separa
-    // "10/08/2026" de "10/08/2026 09:08" no mesmo card.
-    const soData = d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0;
-    return { texto: (soData ? df : dfhUtc).format(d), numerico: true, vazio: false };
-  }
+function formataData(valor: unknown): Formatado {
+  const data = new Date(valor as string);
+  // Data inválida não vira "Invalid Date" na tela: isso parece defeito da tela, e o
+  // defeito está no dado. Dizer o valor cru é o que deixa a causa achável.
+  if (Number.isNaN(data.getTime())) return comoTexto(`data inválida: ${String(valor)}`);
 
-  if (tipo === 'number') {
-    const n = v as number;
-    // **As casas do `format` da medida vencem o genérico (19/11/2026).** `PRAZO MÉDIO
-    // (DIAS)` é `format: "0.0"`: o Power BI escreve `5,3`, e o genérico daqui escrevia
-    // `5,25`. Não é só estética — o caractere a mais fazia o rótulo não caber na fatia
-    // do gráfico e o número era descartado (ver `casasDoNumero`, no back).
-    if (opts?.casas !== undefined && opts.casas !== null) {
-      return { texto: comCasas(opts.casas).format(n), numerico: true, vazio: false };
-    }
-    return {
-      texto: Number.isInteger(n) ? nfInt.format(n) : nf.format(n),
-      numerico: true,
-      vazio: false,
-    };
-  }
+  // Campo só-de-hora: a origem é `time`, que o snapshot grava sobre a época OLE
+  // (1899-12-30). Mostrar "30/12/1899, 18:23" expõe um detalhe de armazenamento como
+  // se fosse a data do dado — aqui vale só a hora. Qualquer ano <= 1900 é época, não
+  // dado real desta operação.
+  if (data.getUTCFullYear() <= 1900) return comoNumero(dfHora.format(data));
 
-  if (tipo === 'boolean') return { texto: v ? 'Sim' : 'Não', numerico: false, vazio: false };
+  // Meia-noite exata é data pura; qualquer hora e a hora importa. É o que separa
+  // "10/08/2026" de "10/08/2026 09:08" no mesmo card.
+  const soData =
+    data.getUTCHours() === 0 && data.getUTCMinutes() === 0 && data.getUTCSeconds() === 0;
+  return comoNumero((soData ? df : dfhUtc).format(data));
+}
 
-  return { texto: String(v), numerico: false, vazio: false };
+function formataNumero(numero: number, casas: number | null | undefined): Formatado {
+  // **As casas do `format` da medida vencem o genérico (19/11/2026).** `PRAZO MÉDIO
+  // (DIAS)` é `format: "0.0"`: o Power BI escreve `5,3`, e o genérico daqui escrevia
+  // `5,25`. Não é só estética — o caractere a mais fazia o rótulo não caber na fatia
+  // do gráfico e o número era descartado (ver `casasDoNumero`, no back).
+  if (casas !== undefined && casas !== null) return comoNumero(comCasas(casas).format(numero));
+  return comoNumero(Number.isInteger(numero) ? nfInt.format(numero) : nf.format(numero));
 }
 
 /** Inteiro com separador de milhar — contagens de linha, totais, etc. */

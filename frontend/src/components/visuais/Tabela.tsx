@@ -6,32 +6,27 @@
 // um visual inteiro. A barra só aparece onde ela significa magnitude: ver `ehMagnitude`.
 // As contas estão em `utils/tabelaDados.ts`; o `<table>`, em `tabela/CorpoDaTabela.tsx`.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type {
   DadosDeTabela,
   FiltroDaTela,
   Valor,
   VisualCalculado,
 } from '../../services/dashboardService.ts';
-import { baixaCsv, textoCsv } from '../../utils/csv.ts';
-import { coletaTabelaCompleta } from '../../services/exportacaoService.ts';
 import { escalasDaTabela, ordenaLinhas } from '../../utils/tabelaDados.ts';
 import { Cartao, Erro } from '../ui/Cartao.tsx';
 import { Paginacao } from '../ui/Paginacao.tsx';
 import { useJanela } from '../../hooks/useJanela.ts';
 import { tituloDeTabela } from '../../utils/rotulos.ts';
 import { Download } from 'lucide-react';
-import { janelaDeServidorPara, LINHAS_VISIVEIS } from '../../utils/janela.ts';
+import { LINHAS_VISIVEIS } from '../../utils/janela.ts';
 import { selecaoDe, type AoFiltrar } from '../../utils/rota.ts';
 import { CorpoDaTabela, textoDaCelula } from './tabela/CorpoDaTabela.tsx';
 import { useOrdemDaTabela } from '../../hooks/useOrdemDaTabela.ts';
+import { useBuscaComEspera } from '../../hooks/useBuscaComEspera.ts';
+import { useExportacaoCsv } from '../../hooks/useExportacaoCsv.ts';
+import { usePaginacaoLocal } from '../../hooks/usePaginacaoLocal.ts';
 import { MensagemDeEstado } from '../ui/Estado.tsx';
-
-/**
- * Quanto o pedido de busca espera depois da última tecla. Sem isto, `1784218` são sete
- * requisições — e as seis primeiras são perguntas que ninguém fez.
- */
-const ESPERA_DA_BUSCA_MS = 250;
 
 export function Tabela(props: {
   pagina: string;
@@ -40,25 +35,9 @@ export function Tabela(props: {
   clicados?: readonly { tabela: string; coluna: string }[];
   aoFiltrar?: AoFiltrar;
 }) {
-  // **Duas velocidades, e por isso dois estados.** `termoBusca` é o que está escrito no
-  // campo e acompanha a tecla; `termoAplicado` é o que já virou pedido. A normalização
-  // acontece aqui (para `1784218 ` não gastar um pedido) e de novo no servidor (a
-  // garantia, porque a URL pode chegar de qualquer lugar).
-  const [termoBusca, setTermoBusca] = useState<string>('');
-  const [termoAplicado, setTermoAplicado] = useState<string>('');
-  const [exportando, setExportando] = useState(false);
-  const [progressoDaExportacao, setProgressoDaExportacao] = useState<{
-    baixadas: number;
-    total: number;
-  } | null>(null);
-  const [erroDaExportacao, setErroDaExportacao] = useState<string | null>(null);
-  useEffect(() => {
-    const t = setTimeout(
-      () => setTermoAplicado(termoBusca.trim().toLowerCase()),
-      ESPERA_DA_BUSCA_MS,
-    );
-    return () => clearTimeout(t);
-  }, [termoBusca]);
+  // Duas velocidades: o que está escrito e o que já virou pedido (`useBuscaComEspera`).
+  const busca = useBuscaComEspera();
+  const termoAplicado = busca.aplicado;
 
   // A ordem sai das colunas da PRIMEIRA resposta, e não das da janela: as colunas não
   // mudam de uma janela para outra, e o `useJanela` precisa da ordem para montar o
@@ -82,6 +61,16 @@ export function Tabela(props: {
     ordemParaServidor,
     props.clicados,
   );
+  const exportacao = useExportacaoCsv({
+    pagina: props.pagina,
+    visual: props.visual,
+    filtros: props.filtros,
+    clicados: props.clicados,
+    busca: termoAplicado,
+    ordem: { coluna: colOrdenada, desc: ordemDesc },
+    escreveCelula: (valor, coluna) => textoDaCelula(valor as Valor, coluna).texto,
+  });
+
   const d = janela.visual.dados as DadosDeTabela | undefined;
   const temDados = !!d && !!d.colunas && !!d.linhas;
   const colunas = useMemo(() => (temDados ? d!.colunas : []), [temDados, d]);
@@ -101,27 +90,13 @@ export function Tabela(props: {
   );
   const escalas = useMemo(() => escalasDaTabela(colunas, linhas), [colunas, linhas]);
 
-  /* A JANELA DE 20 LINHAS. `useJanela` traz 200 do servidor; a tela desenha 20 por vez.
-     Virar página DENTRO das 200 é instantâneo e não custa requisição — só ao sair delas
-     se busca a fatia seguinte. A ANÁLISE DETALHADA ficou 10x mais curta e com MENOS
-     pedidos. */
-  const [inicioLocal, setInicioLocal] = useState(0);
-  /**
-   * Onde cair quando a fatia pedida chegar. Sem isto, a fatia nova mudava a âncora e a
-   * tela voltava ao começo dela: "anterior" a partir da linha 201 mostrava 1–20, não
-   * 181–200 (07/10/2026). E enquanto a fatia não chega, as linhas atuais ficam — antes a
-   * tela já pulava para o começo da fatia velha.
-   */
-  const [alvo, setAlvo] = useState<{ fatia: number; inicio: number } | null>(null);
-  // Buscar ou ordenar refaz o conjunto; continuar na página 7 mostraria o vazio. Comparar
-  // a "âncora" durante a renderização volta ao início sem o quadro em branco de um efeito.
-  const ancora = `${d?.de}|${termoAplicado}|${String(colOrdenada)}|${String(ordemDesc)}`;
-  const [ancoraAnterior, setAncoraAnterior] = useState(ancora);
-  if (ancoraAnterior !== ancora) {
-    setAncoraAnterior(ancora);
-    setInicioLocal(alvo && alvo.fatia === d?.de ? alvo.inicio : 0);
-    setAlvo(null);
-  }
+  // A janela de 20 linhas dentro da fatia de 200 (`usePaginacaoLocal`).
+  const paginacao = usePaginacaoLocal({
+    deDaFatia: d?.de,
+    linhasNaFatia: d?.linhas.length ?? 0,
+    ancoraDoConjunto: `${termoAplicado}|${String(colOrdenada)}|${String(ordemDesc)}`,
+    pedeFatia: janela.vaiPara,
+  });
 
   if (!d || !d.colunas || !d.linhas) {
     return (
@@ -136,7 +111,7 @@ export function Tabela(props: {
   }
 
   const totalLocal = ordenadas.length;
-  const inicio = Math.min(inicioLocal, Math.max(0, totalLocal - 1));
+  const inicio = Math.min(paginacao.inicioLocal, Math.max(0, totalLocal - 1));
   const visiveis = ordenadas.slice(inicio, inicio + LINHAS_VISIVEIS);
 
   // A paginação é SEMPRE sobre a consulta inteira, e `de` é o índice global da primeira
@@ -149,17 +124,6 @@ export function Tabela(props: {
     mostradas: visiveis.length,
     total: d.linhasTotais,
     totalSemBusca: d.totalSemBusca,
-  };
-
-  /** Recebe um índice GLOBAL e decide se anda em memória ou busca outra fatia. */
-  const vaiParaLinha = (linhaGlobal: number) => {
-    if (linhaGlobal >= d.de && linhaGlobal < d.de + d.linhas.length) {
-      setInicioLocal(linhaGlobal - d.de);
-      return;
-    }
-    const novaFatia = janelaDeServidorPara(linhaGlobal);
-    setAlvo({ fatia: novaFatia, inicio: linhaGlobal - novaFatia });
-    janela.vaiPara(novaFatia);
   };
 
   /**
@@ -191,43 +155,6 @@ export function Tabela(props: {
     ]);
   };
 
-  const exportarCSV = async () => {
-    if (exportando) return;
-    setExportando(true);
-    setErroDaExportacao(null);
-    setProgressoDaExportacao({ baixadas: 0, total: d.linhasTotais });
-    try {
-      // A tabela que já veio inteira numa janela só (as pequenas da tela): as linhas já
-      // estão no navegador, idênticas ao que a tela mostra. Exportar delas é instantâneo e
-      // NÃO recalcula a query — é o que conserta o CSV lento de tabela de poucas linhas
-      // cujo cálculo por trás é caro (ex.: PROTOCOLOS POR BASE, 2 linhas, ~15 s). Só vale
-      // quando a janela começa em 0 e cobre o total; fora disso, busca tudo do servidor.
-      const jaInteira = d.de === 0 && d.linhas.length >= d.linhasTotais;
-      const completa = jaInteira
-        ? d
-        : await coletaTabelaCompleta({
-            pagina: props.pagina,
-            visual: props.visual.id,
-            filtros: props.filtros,
-            clicados: props.clicados,
-            busca: termoAplicado,
-            aoProgredir: setProgressoDaExportacao,
-          });
-      const cabecalho = completa.colunas.map((c) => c.nome ?? '');
-      const corpo = ordenaLinhas(completa.linhas, colOrdenada, ordemDesc).map((linha) =>
-        linha.map((v, j) => textoDaCelula(v, completa.colunas[j]).texto),
-      );
-      baixaCsv(`${props.pagina}_${props.visual.id}.csv`, textoCsv(cabecalho, corpo));
-    } catch (err) {
-      setErroDaExportacao(
-        err instanceof Error ? err.message : 'Não foi possível exportar os dados.',
-      );
-    } finally {
-      setExportando(false);
-      setProgressoDaExportacao(null);
-    }
-  };
-
   return (
     <Cartao
       titulo={tituloDeTabela(props.visual, d.colunas)}
@@ -240,27 +167,24 @@ export function Tabela(props: {
             type="text"
             className="tabela-busca-input"
             placeholder="Filtrar…"
-            value={termoBusca}
-            onChange={(e) => setTermoBusca(e.target.value)}
+            value={busca.termo}
+            onChange={(evento) => busca.escreve(evento.target.value)}
           />
           <button
-            onClick={() => void exportarCSV()}
-            disabled={exportando}
+            onClick={() => void exportacao.exporta(d)}
+            disabled={exportacao.exportando}
             title="Exportar todas as linhas do período filtrado em formato CSV"
           >
-            <Download size={12} />{' '}
-            {exportando && progressoDaExportacao
-              ? `CSV ${progressoDaExportacao.baixadas}/${progressoDaExportacao.total}`
-              : 'CSV'}
+            <Download size={12} /> {exportacao.rotuloDoBotao}
           </button>
         </>
       }
     >
       {janela.erro ? <Erro>{janela.erro}</Erro> : null}
-      {erroDaExportacao ? <Erro>{erroDaExportacao}</Erro> : null}
+      {exportacao.erro ? <Erro>{exportacao.erro}</Erro> : null}
       {totalLocal === 0 ? (
         <MensagemDeEstado>
-          {termoBusca ? 'Nenhuma linha para esta busca.' : 'Nenhuma linha para os filtros atuais.'}
+          {busca.termo ? 'Nenhuma linha para esta busca.' : 'Nenhuma linha para os filtros atuais.'}
         </MensagemDeEstado>
       ) : (
         <CorpoDaTabela
@@ -278,7 +202,7 @@ export function Tabela(props: {
       <Paginacao
         janela={estado}
         carregando={janela.carregando}
-        vaiPara={vaiParaLinha}
+        vaiPara={paginacao.vaiParaLinha}
         passo={LINHAS_VISIVEIS}
       />
     </Cartao>

@@ -47,6 +47,21 @@ import { MensagemDeEstado } from '../ui/Estado.tsx';
 /** Abaixo de 4 categorias por página o gráfico deixa de comunicar tendência. */
 const MINIMO_POR_PAGINA = 4;
 
+/**
+ * O subtítulo do cartão. Em conferência ele conta pontos e séries; fora dela, só diz se
+ * o gráfico está em 100% empilhado — o que muda como o número se lê.
+ */
+function subtituloDoGrafico(
+  emConferencia: boolean,
+  pontos: number,
+  series: number,
+  percentual: boolean | undefined,
+): string[] {
+  const empilhado = percentual ? ['100% empilhado'] : [];
+  if (!emConferencia) return empilhado;
+  return [`${inteiro(pontos)} pontos`, `${series} série(s)`, ...empilhado];
+}
+
 export function Grafico({
   visual,
   aoFiltrar,
@@ -174,15 +189,7 @@ export function Grafico({
     comRotulos,
   });
 
-  const sub = conferencia
-    ? [
-        `${inteiro(d.pontos.length)} pontos`,
-        `${g.series.length} série(s)`,
-        ...(g.percentual ? ['100% empilhado'] : []),
-      ]
-    : g.percentual
-      ? ['100% empilhado']
-      : [];
+  const sub = subtituloDoGrafico(conferencia, d.pontos.length, g.series.length, g.percentual);
   const titulo = tituloDeGrafico(visual, d);
 
   // `partesPorCat` e `comum` saem de TODAS as categorias e já foram calculados lá em

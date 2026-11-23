@@ -5,6 +5,23 @@ import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import { ResponsiveContainer } from 'recharts';
 import { cn } from '../../utils/cn.ts';
 
+/**
+ * A classe do delta: `sobe` quando a variação vai para o lado bom, `desce` para o ruim,
+ * vazio quando não variou. Qual lado é o bom vem de `deltaBom` — retrabalho que sobe é
+ * ruim, ativação que sobe é boa.
+ */
+function sentidoDoDelta(delta: number, subirEhBom: boolean): string {
+  if (delta === 0) return '';
+  return delta > 0 === subirEhBom ? 'sobe' : 'desce';
+}
+
+/** A seta que acompanha o número do delta. */
+function setaDoDelta(delta: number): string {
+  if (delta > 0) return '↑';
+  if (delta < 0) return '↓';
+  return '→';
+}
+
 export function Kpi(props: {
   rotulo: string;
   valor: string;
@@ -20,8 +37,7 @@ export function Kpi(props: {
 }) {
   const { delta } = props;
   const temDelta = delta !== null && delta !== undefined && Number.isFinite(delta);
-  const sentido =
-    !temDelta || delta === 0 ? '' : delta > 0 === (props.deltaBom ?? true) ? 'sobe' : 'desce';
+  const sentido = temDelta ? sentidoDoDelta(delta, props.deltaBom ?? true) : '';
   return (
     <div className={cn('ins-kpi', props.destaque && 'destaque')} title={props.title}>
       <span className="ins-kpi-rotulo">{props.rotulo}</span>
@@ -32,7 +48,7 @@ export function Kpi(props: {
         </span>
         {temDelta ? (
           <span className={cn('ins-delta', sentido)}>
-            {delta > 0 ? '↑' : delta < 0 ? '↓' : '→'} {Math.abs(delta * 100).toFixed(0)}%
+            {setaDoDelta(delta)} {Math.abs(delta * 100).toFixed(0)}%
           </span>
         ) : null}
       </span>
