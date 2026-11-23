@@ -17583,3 +17583,111 @@ pessoas, 1,5 pedido por pessoa por minuto antes do 429. Falha fechada e plausív
 a classe cara.
 
 Verde: `npm test` (2.558 back + 285 tela) e `typecheck`.
+
+---
+
+## #273 — a agregação no SRD vale, mas dois filtros e o eixo de tempo decidem quanto (23/11)
+
+O Erick perguntou se as queries de hoje já são agregadas, "deixando o peso para o SRD".
+Não são: **2 de 28** têm `GROUP BY` de verdade (`relatos-do-dia`, 37.153 linhas, e
+`valores-do-relato`, 67), e as duas nasceram do passo 3 do ao vivo em 26/10, não de uma
+estratégia de memória. As outras 26 entregam linha — 1.568.424 delas. O SRD **recorta**
+(a `protocolos-geral` filtra 14 tipos de protocolo e `a.created >= '2025-01-01'`), mas
+não agrega. Quem agrega é a API, em memória, pela engine DAX. Daí a pergunta seguinte:
+quanto custaria empurrar isso para o banco.
+
+### Primeiro, onde a RAM está de verdade
+
+Medido em 23/11 com a API ociosa no ar: **81 MB de RSS**. Os datasets por página, pela
+`probe:peso-memoria`: a mais pesada é a `premiacao-instalacao` com 50,56 MB, a mais leve
+com dado é a `relatorio-do-ano` com 30,30 MB. Com `API_DATASETS_POR_WORKER: '1'` e duas
+workers, no máximo ~100 MB vivos.
+
+Contra o pico de 1.406 MB da `probe:carga-usuarios` (#272), o instantâneo se decompõe em
+heap das workers 580 MB, heap do pai 159 MB (1.107 respostas em cache), cache de visual
+97 MB, externo/datasets 120 MB, e ~450 MB que o RSS tem a mais que heap + external
+somados (reserva não devolvida, fragmentação, V8, buffers do `.gz`) — esta última parcela
+é diferença, não medida isolada. **O dado guardado é a menor parcela.** O caro é
+calcular sobre ele: a tabela `704b7bcb68fd3e17cd30` produz uma resposta de 104,4 MB num
+clique, o dobro do dataset inteiro da página.
+
+### O custo da agregação no banco: menor que o de hoje, não maior
+
+Réplica somente leitura, `statement_timeout` de 300 s, cada tempo repetido e com a ordem
+invertida para não medir só cache quente:
+
+```
+                                tempo        linhas   bytes na rede
+  protocolos-geral completa   50,3–116 s    109.407      104,35 MB
+  agregado por CIDADE         20,2–29,2 s        28         0,8 KB
+  agregado por EQUIPE              15,0 s        40         1,6 KB
+  um card (COUNT)                  14,4 s         1            ~0
+```
+
+O `EXPLAIN (ANALYZE)` diz o contrário do palpite: **o `GROUP BY` custa MAIS CPU no
+banco** — 37,6 s de execução contra 14,3 s da completa — e mesmo assim termina antes. O
+gargalo nunca foi agregar; é materializar e empurrar 104 MB. Consequência de projeto: o
+lugar da agregada é o **refresh** (a cada 15 min), nunca o clique. Agregar ao vivo por
+clique daria 20 s por clique.
+
+### O número que decide: dois slicers anulam a agregação inteira
+
+Cardinalidade do grão de filtros da `visao-geral`, medida no banco:
+
+```
+  grão COMPLETO (os 8 filtros da página)    109.409 linhas   ← 2 A MAIS que o original
+  sem CLIENTE e sem N°PROTOCOLO               2.509 linhas   ← 44x menor
+  sem N°PROTOCOLO, mantendo CLIENTE         104.990 linhas   ← praticamente nada
+  só as 3 dimensões dos gráficos                396 linhas   ← 276x menor
+```
+
+`CLIENTE` e `N°PROTOCOLO` são slicers, e sozinhos destroem toda a compressão. Faz
+sentido: não são dimensão de análise, são **busca pontual**. Busca pontual não quer
+tabela carregada, quer `WHERE` no banco. Qualquer plano de pré-agregação que tente
+preservá-los no grão entrega uma tabela do mesmo tamanho — e o teste é barato, basta
+contar o `GROUP BY` antes de escrever qualquer SQL.
+
+### E o eixo de tempo decide o resto
+
+As medidas agregam por `DATA INSTALAÇÃO` (`paridade-janela.yaml`), então a agregada
+precisa de data no grão, ou não dá para filtrar período:
+
+```
+  6 dimensões analíticas, SEM data     2.509 linhas    44x menor
+  6 dimensões + MÊS                    6.859 linhas    16x menor
+  6 dimensões + DIA                   31.462 linhas     3x menor
+```
+
+Grão diário quase mata o ganho. A decisão "mês ou dia" vale 4,6x de memória e é de
+produto, não de engenharia.
+
+### O trabalho escondido: a coluna do eixo não existe no SQL
+
+O SQL da `protocolos-geral` devolve **34 colunas**; a tabela em memória tem 62. Das 11
+dimensões que a `visao-geral` usa, 8 existem no SQL e 3 não:
+
+- `STATUS PROTOCOLO` = `IF(DATA INSTALAÇÃO <> BLANK(), "Instalado", "Não Instalado")` —
+  portável para `CASE WHEN`, desde que `DATA INSTALAÇÃO` exista.
+- `TÉCNICO 1` e `TÉCNICO 2` vêm de um merge com `gestores-equipes`, que é **dbMaria**.
+  Join entre bancos: não dá para fazer no SRD.
+
+E `DATA INSTALAÇÃO`, que é o eixo de todas as medidas, é calculada sobre
+`DATA ALOCAÇÃO`, `DATA DA TROCA`, `DATA AGENDA`, `TIPO DE PROTOCOLO` e `EQUIPE` — e as
+duas primeiras **não estão no SQL**: nascem de merges com `alocacao-patrimonio` e
+`troca-endereco`. As duas são `dsn=dbVoalle`, ou seja, dá para trazê-las para o mesmo
+SQL; só a `gestores-equipes` fica fora.
+
+**Resumo do custo real:** não é o banco (ele fica mais rápido). É portar três merges para
+SQL com prova de paridade, e mudar dois slicers de "filtro sobre tabela carregada" para
+"busca". Isso é decisão do Erick, não refactor silencioso.
+
+### O que isto NÃO resolve
+
+A `INFORMAÇÕES GERAIS DOS PROTOCOLOS` não é agregável — ela quer 24 colunas × 109 mil
+linhas, e é a resposta de 104,4 MB que nunca cabe no teto de 64 MB. Enquanto ela
+existir como está, o ganho da agregada fica anulado nessa página. O conserto dela é
+paginar no banco, e é também assunto de exposição de dado pessoal (regra 2): ela carrega
+CLIENTE, TELEFONE, RUA e BAIRRO.
+
+Medições em `backend/tools/probe/src/agregada-srd.ts`; o recorte proposto, com o que
+cada decisão trava, em `docs/RECORTE-AGREGADA-SRD.md`.
