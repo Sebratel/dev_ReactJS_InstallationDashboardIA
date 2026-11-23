@@ -83,7 +83,7 @@ async function coletaEmLotes<T extends DadosPaginados>(
   buscaPagina: BuscaDeExportacao = pegaPagina,
 ): Promise<T[]> {
   const lotes: T[] = [];
-  let de = 0;
+  let inicio = 0;
   let total: number | undefined;
   let dadoDe: string | null | undefined;
 
@@ -93,7 +93,7 @@ async function coletaEmLotes<T extends DadosPaginados>(
       pedido.filtros,
       {
         visual: pedido.visual,
-        de,
+        de: inicio,
         linhas: LINHAS_POR_LOTE_DE_EXPORTACAO,
         busca: pedido.busca || undefined,
       },
@@ -102,7 +102,7 @@ async function coletaEmLotes<T extends DadosPaginados>(
       'export',
     );
     const dados = dadosDoVisual(pagina, pedido.visual, valido);
-    if (dados.de !== de || (dados.linhas.length === 0 && de < dados.linhasTotais)) {
+    if (dados.de !== inicio || (dados.linhas.length === 0 && inicio < dados.linhasTotais)) {
       throw new Error('A exportação recebeu uma página incompleta. Tente novamente.');
     }
     if (total === undefined) {
@@ -112,9 +112,9 @@ async function coletaEmLotes<T extends DadosPaginados>(
       throw new Error('Os dados foram atualizados durante a exportação. Tente novamente.');
     }
     lotes.push(dados);
-    de += dados.linhas.length;
-    pedido.aoProgredir?.({ baixadas: de, total });
-  } while (de < (total ?? 0));
+    inicio += dados.linhas.length;
+    pedido.aoProgredir?.({ baixadas: inicio, total });
+  } while (inicio < (total ?? 0));
 
   return lotes;
 }

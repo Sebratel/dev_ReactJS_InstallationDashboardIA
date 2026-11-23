@@ -36,9 +36,11 @@ export interface EstadoDaTela {
 }
 
 /** A seleção depois de clicar em `v`: entra, ou sai se já estava. */
-export function alternaValor(selecao: readonly Valor[], v: Valor): Valor[] {
-  const marcado = selecao.some((x) => Object.is(x, v));
-  return marcado ? selecao.filter((x) => !Object.is(x, v)) : [...selecao, v];
+export function alternaValor(selecao: readonly Valor[], valor: Valor): Valor[] {
+  const marcado = selecao.some((selecionado) => Object.is(selecionado, valor));
+  return marcado
+    ? selecao.filter((selecionado) => !Object.is(selecionado, valor))
+    : [...selecao, valor];
 }
 
 /**
@@ -53,13 +55,20 @@ export function estadosVizinhos(
   teto: number,
 ): EstadoDaTela[] {
   const out: EstadoDaTela[] = [];
-  for (const s of segmentacoes) {
-    const selecao = selecaoDe(estado.filtros, s.tabela, s.coluna);
-    const clicados = estado.clicados.filter((c) => chaveDeCampo(c) !== chaveDeCampo(s));
-    for (const v of s.valores) {
+  for (const segmentacao of segmentacoes) {
+    const selecao = selecaoDe(estado.filtros, segmentacao.tabela, segmentacao.coluna);
+    const clicados = estado.clicados.filter(
+      (campoClicado) => chaveDeCampo(campoClicado) !== chaveDeCampo(segmentacao),
+    );
+    for (const valor of segmentacao.valores) {
       if (out.length >= teto) return out;
       out.push({
-        filtros: aplicaSelecao(estado.filtros, s.tabela, s.coluna, alternaValor(selecao, v)),
+        filtros: aplicaSelecao(
+          estado.filtros,
+          segmentacao.tabela,
+          segmentacao.coluna,
+          alternaValor(selecao, valor),
+        ),
         clicados,
       });
     }
@@ -86,17 +95,21 @@ export function estadosDoPeriodo(
   const sel = selecaoDeData(estado.filtros, data.tabela, data.coluna);
   const aplica = (mudancas: MudancaDeNivel[]): EstadoDaTela => ({
     filtros: mudancas.reduce(
-      (f, m) => aplicaSelecao(f, data.tabela, data.coluna, m.valores, m.nivel),
+      (acumulado, mudanca) =>
+        aplicaSelecao(acumulado, data.tabela, data.coluna, mudanca.valores, mudanca.nivel),
       estado.filtros,
     ),
-    clicados: estado.clicados.filter((c) => chaveDeCampo(c) !== chaveDeCampo(data)),
+    clicados: estado.clicados.filter(
+      (campoClicado) => chaveDeCampo(campoClicado) !== chaveDeCampo(data),
+    ),
   });
-  const anos = [...arvore].sort((a, b) => b.ano - a.ano);
-  const doMes = anos.filter((a) => sel.anos.includes(a.ano));
+  const anos = [...arvore].sort((primeiro, segundo) => segundo.ano - primeiro.ano);
+  const doMes = anos.filter((anoAtual) => sel.anos.includes(anoAtual.ano));
   const out: EstadoDaTela[] = [];
-  for (const a of doMes.length > 0 ? doMes : anos.slice(0, 1)) {
-    for (const m of [...a.meses].reverse()) out.push(aplica(clicaMes(sel, a.ano, m.nome)));
+  for (const alvo of doMes.length > 0 ? doMes : anos.slice(0, 1)) {
+    for (const medida of [...alvo.meses].reverse())
+      out.push(aplica(clicaMes(sel, alvo.ano, medida.nome)));
   }
-  for (const a of anos) out.push(aplica(clicaAno(sel, a.ano)));
+  for (const anoAtual of anos) out.push(aplica(clicaAno(sel, anoAtual.ano)));
   return out.slice(0, teto);
 }

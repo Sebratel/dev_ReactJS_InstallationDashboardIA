@@ -51,7 +51,7 @@ export interface Geometria {
  *   a cada página faria duas páginas com colunas de altura igual valerem números
  *   diferentes.
  */
-export function geometriaDoGrafico(p: {
+export function geometriaDoGrafico(ponto: {
   alturaDaCaixa: number;
   larguraDoPlot: number;
   nCategorias: number;
@@ -63,12 +63,13 @@ export function geometriaDoGrafico(p: {
    *  a do COM com rótulo). */
   comRotulos?: boolean;
 }): { geo: Geometria; marcas: number[] } {
-  const margemTopo = p.comRotulos ? 26 : MARGEM.topo;
-  const espacoAbaixoDoTopo = p.alturaDaCaixa - margemTopo - (p.naFaceta ? FACETA : 0);
+  const margemTopo = ponto.comRotulos ? 26 : MARGEM.topo;
+  const espacoAbaixoDoTopo = ponto.alturaDaCaixa - margemTopo - (ponto.naFaceta ? FACETA : 0);
   const base = Math.max(18, Math.min(MARGEM.base, Math.round(espacoAbaixoDoTopo * 0.3)));
   const alturaDoPlot = Math.max(1, espacoAbaixoDoTopo - base);
-  const banda = p.nCategorias > 0 ? p.larguraDoPlot / p.nCategorias : p.larguraDoPlot;
-  const marcas = marcasDoEixo(p.teto);
+  const banda =
+    ponto.nCategorias > 0 ? ponto.larguraDoPlot / ponto.nCategorias : ponto.larguraDoPlot;
+  const marcas = marcasDoEixo(ponto.teto);
   const topo = Math.max(...marcas, 1);
   // 70% da categoria: o vão entre vizinhas fica proporcional, como no COM.
   //
@@ -76,7 +77,7 @@ export function geometriaDoGrafico(p: {
   // o número de séries, mais os vãos entre elas — senão duas séries dividem os mesmos
   // 54px e saem com 26 cada, num vão de 200 (ver `LARGURA_MAXIMA`). Na PILHA as fatias se
   // sobrepõem na mesma coluna, então lá o teto é o da marca inteira.
-  const barras = p.empilha ? 1 : Math.max(1, p.nAreas);
+  const barras = ponto.empilha ? 1 : Math.max(1, ponto.nAreas);
   const tetoDaMarca = LARGURA_MAXIMA * barras + VAO * (barras - 1);
   const larguraDaMarca = Math.min(tetoDaMarca, Math.max(6, banda * 0.7));
   return {
@@ -87,12 +88,12 @@ export function geometriaDoGrafico(p: {
       alturaDoPlot,
       base,
       topo,
-      y: (v) => margemTopo + alturaDoPlot * (1 - v / topo),
-      xMeio: (i) => MARGEM.esquerda + banda * (i + 0.5),
+      y: (valor) => margemTopo + alturaDoPlot * (1 - valor / topo),
+      xMeio: (indice) => MARGEM.esquerda + banda * (indice + 0.5),
       larguraDaMarca,
-      larguraDaFatia: p.empilha
+      larguraDaFatia: ponto.empilha
         ? larguraDaMarca
-        : Math.max(3, (larguraDaMarca - VAO * (p.nAreas - 1)) / Math.max(p.nAreas, 1)),
+        : Math.max(3, (larguraDaMarca - VAO * (ponto.nAreas - 1)) / Math.max(ponto.nAreas, 1)),
     },
   };
 }

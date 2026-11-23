@@ -22,14 +22,30 @@ const ORDEM: readonly string[] = [
 
 export function ordenaTelas<T extends { id: string }>(telas: readonly T[]): T[] {
   const posicao = (id: string) => {
-    const i = ORDEM.indexOf(id);
-    return i < 0 ? ORDEM.length : i;
+    const indice = ORDEM.indexOf(id);
+    return indice < 0 ? ORDEM.length : indice;
   };
   // `sort` é estável: as que não estão na lista mantêm a ordem de chegada entre si.
-  return [...telas].sort((a, b) => posicao(a.id) - posicao(b.id));
+  return [...telas].sort((primeiro, segundo) => posicao(primeiro.id) - posicao(segundo.id));
 }
 
-/** O nome da aba: "INSTALAÇÃO/ REINCIDENTE" do PBIP vira "INSTALAÇÃO / REINCIDENTE". */
+/**
+ * O nome da aba: "INSTALAÇÃO/ REINCIDENTE" do PBIP vira "INSTALAÇÃO / REINCIDENTE".
+ *
+ * Sem regex de propósito: a forma anterior, um `replace` global de "espaços, barra,
+ * espaços", custava O(n²) num nome só de espaços, por backtracking (regra
+ * `sonarjs/super-linear-regex`). `split` mais os `trimStart`/`trimEnd` nativos fazem o
+ * mesmo em uma passada. As pontas da string inteira ficam como vieram — quem só aparava
+ * o espaço ao redor da barra continua fazendo isso.
+ */
 export function nomeDaAba(nome: string): string {
-  return nome.replace(/\s*\/\s*/g, ' / ');
+  const partes = nome.split('/');
+  if (partes.length === 1) return nome;
+  const ultima = partes.length - 1;
+  return partes
+    .map((parte, indice) => {
+      const semEspacoAntes = indice === 0 ? parte : parte.trimStart();
+      return indice === ultima ? semEspacoAntes : semEspacoAntes.trimEnd();
+    })
+    .join(' / ');
 }

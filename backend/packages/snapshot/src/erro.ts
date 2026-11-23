@@ -63,7 +63,7 @@ export const CODIGO_FALHA_TRANSITORIA = 75;
  * existe para frear.
  */
 const FALHA_TRANSITORIA =
-  /\b(?:ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN|EPIPE)\b|Connection terminated|fetch failed|socket hang up|timeout exceeded when trying to connect/i;
+  /\b(?:ECONNREFUSED|ECONNRESET|ECONNABORTED|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN|EPIPE)\b|Connection terminated|Connection ended|fetch failed|socket hang up|timeout exceeded when trying to connect|conflict with recovery|terminating connection due to administrator command/i;
 
 export function ehFalhaTransitoria(erro: string): boolean {
   return FALHA_TRANSITORIA.test(erro);

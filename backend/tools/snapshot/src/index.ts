@@ -923,7 +923,7 @@ if (paginasInvalidas.length) {
 }
 
 const plano = pedidas.length > 0 ? planeja(pedidas, model) : null;
-let alvo = [...new Set([...(plano?.queries ?? []), ...args.queries])].sort();
+let alvo = [...new Set([...(plano?.queries ?? []), ...args.queries])].sort((a, b) => a.localeCompare(b));
 
 // Emparelhado, sempre: `field-agenda-slot` não é `queryRef` de tabela nenhuma
 // (ACHADOS #87), então `planeja()` nunca o alcança sozinho — e sem isto, o dia em
@@ -932,7 +932,7 @@ let alvo = [...new Set([...(plano?.queries ?? []), ...args.queries])].sort();
 // nenhum. É o mesmo erro do #53/#78 (query e calculada saindo de sincronia), um
 // nível acima: aqui são duas QUERIES da mesma tabela.
 if (alvo.includes('field-agenda') && !alvo.includes('field-agenda-slot')) {
-  alvo = [...alvo, 'field-agenda-slot'].sort();
+  alvo = [...alvo, 'field-agenda-slot'].sort((a, b) => a.localeCompare(b));
 }
 
 const foraDoEscopo = alvo.filter((id) => FORA_DO_ESCOPO.has(id));
@@ -1189,11 +1189,13 @@ let congelouCedoOk = true;
 for (const [i, id] of aBuscar.entries()) {
   process.stderr.write(`  ${id}… `);
   let r = await rodaEmSubprocesso(id);
-  // Uma conexão cortada no meio de UMA query (06/10/2026, `contratos`) derrubava o grupo
-  // inteiro por 15 min. Segunda chance só para erro de rede: o resto se repete igual.
-  if (!r.ok && r.erro && ehFalhaTransitoria(r.erro)) {
-    process.stderr.write(`FALHOU (${r.ms} ms, rede) — de novo em ${ESPERA_ANTES_DE_REPETIR_MS / 1000}s… `);
-    await new Promise((pronto) => setTimeout(pronto, ESPERA_ANTES_DE_REPETIR_MS));
+  // Uma conexão cortada ou conflito de réplica (`conflict with recovery`) no meio de UMA
+  // query derrubava o grupo inteiro. Até duas retentativas com espera progressiva só para
+  // erro transitório de rede/réplica: o resto se repete igual.
+  for (let tentativa = 1; tentativa <= 2 && !r.ok && r.erro && ehFalhaTransitoria(r.erro); tentativa++) {
+    const esperaMs = ESPERA_ANTES_DE_REPETIR_MS * tentativa;
+    process.stderr.write(`FALHOU (${r.ms} ms, transitório #${tentativa}) — de novo em ${esperaMs / 1000}s… `);
+    await new Promise((pronto) => setTimeout(pronto, esperaMs));
     r = await rodaEmSubprocesso(id);
   }
   process.stderr.write(`${r.ok ? 'ok' : 'FALHOU'} (${r.ms} ms)\n`);

@@ -78,7 +78,7 @@ export function confereSnapshot(
   const deQueries = arquivos.filter((a) => !a.calculada);
   const maisNovoDeQuery = deQueries
     .map((a) => a.cabecalho.geradoEm)
-    .sort()
+    .sort((a, b) => a.localeCompare(b))
     .at(-1);
 
   for (const a of arquivos) {
@@ -93,7 +93,7 @@ export function confereSnapshot(
         limite = deQueries
           .filter((q) => origens.has(q.cabecalho.query))
           .map((q) => q.cabecalho.geradoEm)
-          .sort()
+          .sort((a, b) => a.localeCompare(b))
           .at(-1);
       }
 

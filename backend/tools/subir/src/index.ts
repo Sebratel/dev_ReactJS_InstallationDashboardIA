@@ -194,10 +194,12 @@ if (soAquece) {
   const dist = path.join(ROOT, 'frontend', 'dist', 'index.html');
   if (!semBuild) {
     console.log('Compilando a tela (npm run web:build)…');
-    const r = spawnSync('npm run web:build', {
+    const npmCli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+    const npmCliUnix = path.join(path.dirname(process.execPath), '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js');
+    const cli = fs.existsSync(npmCli) ? npmCli : npmCliUnix;
+    const r = spawnSync(process.execPath, [cli, 'run', 'web:build'], {
       cwd: ROOT,
       stdio: 'inherit',
-      shell: true,
     });
     if (r.status !== 0) {
       if (!fs.existsSync(dist)) {

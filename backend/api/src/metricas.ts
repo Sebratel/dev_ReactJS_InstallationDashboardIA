@@ -148,10 +148,10 @@ export class Metricas {
 
   instantaneo(): InstantaneoDeMetricas {
     const contadores: Record<string, number> = {};
-    for (const [k, v] of [...this.#contadores].sort()) contadores[k] = v;
+    for (const [k, v] of [...this.#contadores].sort(([a], [b]) => a.localeCompare(b))) contadores[k] = v;
 
     const duracoes: Record<string, DuracaoPublicada> = {};
-    for (const [k, r] of [...this.#duracoes].sort()) {
+    for (const [k, r] of [...this.#duracoes].sort(([a], [b]) => a.localeCompare(b))) {
       duracoes[k] = {
         n: r.n,
         mediaMs: Math.round((r.somaMs / r.n) * 10) / 10,

@@ -50,7 +50,7 @@ function gravaNoEnv(texto: string, valores: Record<string, string>): string {
     else novas.push(`${k}=${v}`);
   }
   if (novas.length > 0) {
-    saida = saida.replace(/\s*$/, '') + nl + nl + '# Banco da plataforma (npm run banco:cria).' + nl + novas.join(nl) + nl;
+    saida = saida.trimEnd() + nl + nl + '# Banco da plataforma (npm run banco:cria).' + nl + novas.join(nl) + nl;
   }
   return saida;
 }

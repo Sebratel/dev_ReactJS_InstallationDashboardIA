@@ -47,9 +47,9 @@ test('seletor SUBSTITUI no histórico; clique num visual EMPILHA', () => {
   const estado = monta();
   const antes = window.history.length;
   act(() => estado().mudaFiltro('T', 'cidade', ['Canoas']));
-  expect(window.history.length).toBe(antes);
+  expect(window.history).toHaveLength(antes);
   act(() => estado().aoFiltrarAlvos([{ tabela: 'T', coluna: 'equipe', valor: 'A' }]));
-  expect(window.history.length).toBe(antes + 1);
+  expect(window.history).toHaveLength(antes + 1);
   expect(naUrl().clicados).toEqual([{ tabela: 'T', coluna: 'equipe' }]);
 });
 

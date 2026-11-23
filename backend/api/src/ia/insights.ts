@@ -75,12 +75,16 @@ function extrairCandidatoJson(texto: string): { limpo: string; candidato: string
     .replace(/<(?:thought|thinking)>[\s\S]*?<\/(?:thought|thinking)>/gi, '')
     .trim();
 
-  const cercado = semPensamento.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  const limpo = (cercado ? cercado[1]! : semPensamento)
-    .trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/, '')
-    .trim();
+  const inicioCerca = semPensamento.indexOf('```');
+  let bruto = semPensamento;
+  if (inicioCerca !== -1) {
+    const fimCerca = semPensamento.indexOf('```', inicioCerca + 3);
+    if (fimCerca !== -1) {
+      bruto = semPensamento.slice(inicioCerca + 3, fimCerca).replace(/^json\b/i, '');
+    }
+  }
+  const semAbertura = bruto.trim().replace(/^```(?:json)?/i, '').trim();
+  const limpo = (semAbertura.endsWith('```') ? semAbertura.slice(0, -3) : semAbertura).trim();
 
   const inicioObj = limpo.indexOf('{');
   const inicioArr = limpo.indexOf('[');

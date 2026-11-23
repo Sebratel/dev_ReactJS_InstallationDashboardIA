@@ -25,12 +25,12 @@ export function Sparkline({ dados }: { dados: DadosDeGrafico }) {
   const { isDark } = useThemeStore();
 
   const janela = useMemo(() => {
-    const g = montaGrafico(dados);
+    const grafico = montaGrafico(dados);
     // A soma de todas as séries por ponto: para um gráfico de série única (o caso de
     // hoje) é o mesmo valor da série; para um empilhado seria o total da pilha — o
     // mesmo raciocínio de "a fatia inteira" que a Rosca já usa.
-    const totais = g.categorias.map((_, i) =>
-      g.series.reduce((soma, s) => soma + (s.valores[i] ?? 0), 0),
+    const totais = grafico.categorias.map((_, indice) =>
+      grafico.series.reduce((soma, serie) => soma + (serie.valores[indice] ?? 0), 0),
     );
     return totais.slice(-N_PONTOS);
   }, [dados]);
@@ -40,11 +40,15 @@ export function Sparkline({ dados }: { dados: DadosDeGrafico }) {
   const maior = Math.max(...janela);
   const menor = Math.min(...janela);
   const alcance = maior - menor || 1;
-  const x = (i: number) => (i / (janela.length - 1)) * LARGURA;
-  const y = (v: number) => ALTURA - FOLGA - ((v - menor) / alcance) * (ALTURA - FOLGA * 2);
+  const posX = (indice: number) => (indice / (janela.length - 1)) * LARGURA;
+  const posY = (valor: number) =>
+    ALTURA - FOLGA - ((valor - menor) / alcance) * (ALTURA - FOLGA * 2);
 
   const caminho = janela
-    .map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`)
+    .map(
+      (valor, indice) =>
+        `${indice === 0 ? 'M' : 'L'}${posX(indice).toFixed(1)} ${posY(valor).toFixed(1)}`,
+    )
     .join(' ');
   const ultimo = janela[janela.length - 1]!;
   const cor = corNoTema(corDaSerie('', 0), isDark);
@@ -68,8 +72,8 @@ export function Sparkline({ dados }: { dados: DadosDeGrafico }) {
       />
       <circle
         className="sparkline-ponto"
-        cx={x(janela.length - 1)}
-        cy={y(ultimo)}
+        cx={posX(janela.length - 1)}
+        cy={posY(ultimo)}
         r={2}
         fill={cor}
       />

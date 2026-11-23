@@ -6,30 +6,37 @@ import type { Categoria, Desfecho, Situacao } from '../../services/insightsServi
 
 type Talvez = number | null | undefined;
 
-export const int = (v: Talvez): string =>
-  v === null || v === undefined ? '—' : Math.round(v).toLocaleString('pt-BR');
+export const int = (valor: Talvez): string =>
+  valor === null || valor === undefined ? '—' : Math.round(valor).toLocaleString('pt-BR');
 
-export const dec = (v: Talvez, casas = 1): string =>
-  v === null || v === undefined
+export const dec = (valor: Talvez, casas = 1): string =>
+  valor === null || valor === undefined
     ? '—'
-    : v.toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas });
+    : valor.toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas });
 
-export const pct = (v: Talvez, casas = 0): string =>
-  v === null || v === undefined
+export const pct = (valor: Talvez, casas = 0): string =>
+  valor === null || valor === undefined
     ? '—'
-    : `${(v * 100).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`;
+    : `${emPorCento(valor, { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`;
 
-export const sinal = (v: Talvez, casas = 0): string =>
-  v === null || v === undefined
-    ? '—'
-    : `${v > 0 ? '+' : ''}${(v * 100).toLocaleString('pt-BR', { maximumFractionDigits: casas })}%`;
+/** O valor vezes 100, escrito no padrão pt-BR. */
+const emPorCento = (valor: number, opcoes: Intl.NumberFormatOptions): string =>
+  (valor * 100).toLocaleString('pt-BR', opcoes);
+
+/** O mesmo que `pct`, mas com o `+` na frente quando sobe. */
+export const sinal = (valor: Talvez, casas = 0): string => {
+  if (valor === null || valor === undefined) return '—';
+  const maisOuNada = valor > 0 ? '+' : '';
+  return `${maisOuNada}${emPorCento(valor, { maximumFractionDigits: casas })}%`;
+};
 
 const DIAS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 /** "ter 18/11". A data chega como `AAAA-MM-DD`; meio-dia evita o fuso virar o dia. */
-export const diaCurto = (iso: string | undefined): string =>
-  iso
-    ? `${DIAS[new Date(`${iso}T12:00:00`).getDay()] ?? ''} ${iso.slice(8, 10)}/${iso.slice(5, 7)}`
-    : '';
+export const diaCurto = (iso: string | undefined): string => {
+  if (!iso) return '';
+  const diaDaSemana = DIAS[new Date(`${iso}T12:00:00`).getDay()] ?? '';
+  return `${diaDaSemana} ${dataCurta(iso)}`;
+};
 export const dataCurta = (iso: string | undefined): string =>
   iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '';
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];

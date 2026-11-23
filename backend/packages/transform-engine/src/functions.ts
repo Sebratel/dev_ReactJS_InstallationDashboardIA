@@ -2087,7 +2087,7 @@ export function standardFunctions(): MFunctionTable {
 
 /** Nomes implementados, para o teste de cobertura contra o corpus. */
 export function implementedMFunctions(): string[] {
-  return [...standardFunctions().keys()].sort();
+  return [...standardFunctions().keys()].sort((a, b) => a.localeCompare(b));
 }
 
 export { type MCallContext };

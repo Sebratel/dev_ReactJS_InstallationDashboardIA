@@ -5,13 +5,13 @@ export function LegendaDoGrafico(props: {
 }) {
   return (
     <div className="legenda">
-      {props.series.map((s) => (
-        <span className="chave" key={s.chave}>
+      {props.series.map((serie) => (
+        <span className="chave" key={serie.chave}>
           <i
-            className={s.desenho === 'linha' ? 'tracinho' : 'ponto'}
-            style={{ background: s.cor }}
+            className={serie.desenho === 'linha' ? 'tracinho' : 'ponto'}
+            style={{ background: serie.cor }}
           />
-          <span>{s.nome}</span>
+          <span>{serie.nome}</span>
         </span>
       ))}
     </div>

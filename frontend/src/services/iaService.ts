@@ -6,6 +6,7 @@
 import { codificaFiltro } from '../../../backend/packages/widget-engine/src/filtro-url.ts';
 import { chaveVisualIa, ehVisualComIa } from '../../../backend/api/src/ia/visuais-ia.ts';
 import type { FiltroDaTela } from './dashboardService.ts';
+import { comConsulta } from '../utils/url.ts';
 
 export { chaveVisualIa };
 
@@ -71,19 +72,27 @@ export function urlDeInsightsVisual(
   filtros: readonly FiltroDaTela[] = [],
   clicados: readonly { tabela: string; coluna: string }[] = [],
 ): string {
-  const p = new URLSearchParams();
-  for (const f of filtros) {
-    if (f.valores.length === 0) continue;
-    p.append(
+  const parametros = new URLSearchParams();
+  for (const filtro of filtros) {
+    if (filtro.valores.length === 0) continue;
+    parametros.append(
       'filtro',
-      codificaFiltro({ tabela: f.tabela, coluna: f.coluna, valores: f.valores, nivel: f.nivel }),
+      codificaFiltro({
+        tabela: filtro.tabela,
+        coluna: filtro.coluna,
+        valores: filtro.valores,
+        nivel: filtro.nivel,
+      }),
     );
   }
-  for (const c of clicados) {
-    p.append('clicado', JSON.stringify({ tabela: c.tabela, coluna: c.coluna }));
+  for (const campoClicado of clicados) {
+    parametros.append(
+      'clicado',
+      JSON.stringify({ tabela: campoClicado.tabela, coluna: campoClicado.coluna }),
+    );
   }
-  const q = p.toString();
-  return `/api/dashboards/${encodeURIComponent(pagina)}/insights/${encodeURIComponent(visualId)}${q ? `?${q}` : ''}`;
+  const caminho = `/api/dashboards/${encodeURIComponent(pagina)}/insights/${encodeURIComponent(visualId)}`;
+  return comConsulta(caminho, parametros);
 }
 
 export async function pedeInsightsDoVisual(

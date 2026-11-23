@@ -89,7 +89,8 @@ export function Capa(props: {
   // As idades ("há 23min") e a "próxima ~HH:MM" andam sozinhas, sem esperar um clique.
   const agora = useAgora();
   const leitura =
-    saude?.refresh?.queries.find((q) => q.id === 'hora-atualizado')?.ultimaCarga ?? props.dadoDe;
+    saude?.refresh?.queries.find((consulta) => consulta.id === 'hora-atualizado')?.ultimaCarga ??
+    props.dadoDe;
 
   return (
     <div className="flex flex-col gap-[10px] pb-[16px]">
@@ -123,8 +124,8 @@ export function Capa(props: {
       <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] items-stretch gap-[10px]">
         <Bloco titulo="Objetivo">
           <Lista>
-            {OBJETIVOS.map((o) => (
-              <li key={o}>{o}</li>
+            {OBJETIVOS.map((opcao) => (
+              <li key={opcao}>{opcao}</li>
             ))}
           </Lista>
         </Bloco>
@@ -139,37 +140,23 @@ export function Capa(props: {
           </p>
           <table className="w-full text-[0.78rem]">
             <tbody>
-              {FONTES.map(([nome, ids], i) => {
-                const s = situacaoDaFonte(ids, saude, agora);
-                const linha = i < FONTES.length - 1 ? 'border-b border-pbi-borda' : '';
-                return (
-                  <tr key={nome}>
-                    <td className={`py-[6px] font-semibold ${linha}`}>{nome}</td>
-                    <td
-                      className={`py-[6px] text-right text-[0.72rem] whitespace-nowrap text-pbi-muted ${linha}`}
-                    >
-                      {!s ? (
-                        '—'
-                      ) : s.status === 'falhou' ? (
-                        <span className="font-bold text-pbi-critico-texto">falhou</span>
-                      ) : s.status === 'vencida' ? (
-                        <span className="font-bold text-pbi-gold-600">parado · {s.idade}</span>
-                      ) : (
-                        `${s.idade}${s.proxima ? ` · ${s.proxima}` : s.cadencia ? ` · a cada ${s.cadencia}` : ''}`
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {FONTES.map(([nome, ids], indice) => (
+                <LinhaDaFonte
+                  key={nome}
+                  nome={nome}
+                  situacao={situacaoDaFonte(ids, saude, agora)}
+                  comLinhaEmbaixo={indice < FONTES.length - 1}
+                />
+              ))}
             </tbody>
           </table>
         </Bloco>
 
         <Bloco titulo="Indicadores">
           <Lista>
-            {INDICADORES.map(([t, d]) => (
-              <li key={t}>
-                <b>{t}:</b> {d}
+            {INDICADORES.map(([tela, dados]) => (
+              <li key={tela}>
+                <b>{tela}:</b> {dados}
               </li>
             ))}
           </Lista>
@@ -193,5 +180,47 @@ export function Capa(props: {
         <span>Inteligência de Dados · Sebratel</span>
       </div>
     </div>
+  );
+}
+
+/** A situação de um grupo de consultas, como `situacaoDaFonte` a devolve. */
+type SituacaoDaFonte = ReturnType<typeof situacaoDaFonte>;
+
+/**
+ * O que a coluna da direita diz de um grupo: a idade do dado e, ao lado, quando o grupo
+ * inteiro terá dado novo. Dado velho é visível, nunca silencioso — por isso "falhou" e
+ * "parado" ganham destaque em vez de virar mais um texto cinza.
+ */
+function TextoDaSituacao({ situacao }: { situacao: NonNullable<SituacaoDaFonte> }) {
+  if (situacao.status === 'falhou') {
+    return <span className="font-bold text-pbi-critico-texto">falhou</span>;
+  }
+  if (situacao.status === 'vencida') {
+    return <span className="font-bold text-pbi-gold-600">parado · {situacao.idade}</span>;
+  }
+  if (situacao.proxima) return <>{`${situacao.idade} · ${situacao.proxima}`}</>;
+  if (situacao.cadencia) return <>{`${situacao.idade} · a cada ${situacao.cadencia}`}</>;
+  return <>{situacao.idade}</>;
+}
+
+function LinhaDaFonte({
+  nome,
+  situacao,
+  comLinhaEmbaixo,
+}: {
+  nome: string;
+  situacao: SituacaoDaFonte;
+  comLinhaEmbaixo: boolean;
+}) {
+  const borda = comLinhaEmbaixo ? 'border-b border-pbi-borda' : '';
+  return (
+    <tr>
+      <td className={`py-[6px] font-semibold ${borda}`}>{nome}</td>
+      <td
+        className={`py-[6px] text-right text-[0.72rem] whitespace-nowrap text-pbi-muted ${borda}`}
+      >
+        {situacao ? <TextoDaSituacao situacao={situacao} /> : '—'}
+      </td>
+    </tr>
   );
 }

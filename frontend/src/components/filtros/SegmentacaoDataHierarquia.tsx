@@ -79,12 +79,14 @@ export function SegmentacaoDataHierarquia(props: {
     setExpandidaPara(chaveDaArvore);
     // Um ano só: já aberto, senão o primeiro clique é sempre no mesmo lugar.
     setExpandidos(
-      arvore.length === 1 ? new Set([`a${arvore[0]!.ano}`]) : new Set(sel.anos.map((a) => `a${a}`)),
+      arvore.length === 1
+        ? new Set([`a${arvore[0]!.ano}`])
+        : new Set(sel.anos.map((ano) => `a${ano}`)),
     );
   }
 
   function aplica(mudancas: MudancaDeNivel[]): void {
-    for (const m of mudancas) props.aoMudar(m.nivel, m.valores);
+    for (const mudanca of mudancas) props.aoMudar(mudanca.nivel, mudanca.valores);
   }
 
   function alternaNo(chave: string): void {
@@ -103,7 +105,7 @@ export function SegmentacaoDataHierarquia(props: {
       // O período tem um resumo próprio ("26 · out"); o contador de valores só confundiria.
       marcados={marcado > 0 ? 1 : 0}
       aberto={aberto}
-      aoClicar={() => setAberto((a) => !a)}
+      aoClicar={() => setAberto((alvo) => !alvo)}
       title={marcado ? resumoDeData(sel) : `Escolher ${props.rotulo}`}
     >
       {aberto && (

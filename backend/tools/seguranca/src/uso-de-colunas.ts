@@ -56,9 +56,57 @@ function arquivosDeCodigo(dir: string): string[] {
 
 /** O `Odbc.Query("…", "…")` de um M é o SQL da extração, não uso de coluna do modelo.
  *  Argumento a argumento, como texto M entre aspas: o SQL ali dentro vem cheio de
- *  `#(lf)`/`#(tab)`, e um `[^)]*` pararia no primeiro parêntese deles. */
-const semFonteSql = (m: string) =>
-  m.replace(/Odbc\.Query\((?:\s*,?\s*"(?:[^"]|"")*")+[^)]*\)/g, 'Odbc.Query(<sql>)');
+ *  `#(lf)`/`#(tab)`, e um `[^)]*` pararia no primeiro parêntese deles.
+ *  Parser linear O(n) para evitar backtracking exponencial em regex (Sonar S5852). */
+const semFonteSql = (m: string): string => {
+  const marcador = 'Odbc.Query(';
+  let out = '';
+  let i = 0;
+  while (i < m.length) {
+    const inicio = m.indexOf(marcador, i);
+    if (inicio === -1) {
+      out += m.slice(i);
+      break;
+    }
+    let j = inicio + marcador.length;
+    let strings = 0;
+    while (j < m.length) {
+      let k = j;
+      while (k < m.length && /\s/.test(m[k])) k++;
+      if (m[k] === ',') {
+        k++;
+        while (k < m.length && /\s/.test(m[k])) k++;
+      }
+      if (m[k] !== '"') break;
+      k++;
+      let fechou = false;
+      while (k < m.length) {
+        if (m[k] === '"') {
+          if (m[k + 1] === '"') {
+            k += 2;
+            continue;
+          }
+          k++;
+          fechou = true;
+          break;
+        }
+        k++;
+      }
+      if (!fechou) break;
+      strings++;
+      j = k;
+    }
+    const fim = strings > 0 ? m.indexOf(')', j) : -1;
+    if (fim === -1) {
+      out += m.slice(i, inicio + marcador.length);
+      i = inicio + marcador.length;
+    } else {
+      out += m.slice(i, inicio) + 'Odbc.Query(<sql>)';
+      i = fim + 1;
+    }
+  }
+  return out;
+};
 
 export function usoDeColunas(raiz: string): (tabela: string, coluna: string) => Uso[] {
   const specs = path.join(raiz, 'backend', 'specs');

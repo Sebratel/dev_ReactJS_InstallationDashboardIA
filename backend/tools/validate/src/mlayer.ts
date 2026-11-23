@@ -97,19 +97,21 @@ function splitTopLevel(src: string, sep: string): Cut {
   const parts: string[] = [];
   let depth = 0;
   let inicio = 0;
-  for (let i = 0; i < src.length; i++) {
+  let i = 0;
+  while (i < src.length) {
     const c = src[i];
     if (c === '"') {
-      i = skipString(src, i);
+      i = skipString(src, i) + 1;
       continue;
     }
     if (c === '/' && src[i + 1] === '/') {
       while (i < src.length && src[i] !== '\n') i++;
+      i++;
       continue;
     }
     if (c === '/' && src[i + 1] === '*') {
       const fim = src.indexOf('*/', i + 2);
-      i = fim < 0 ? src.length : fim + 1;
+      i = fim < 0 ? src.length : fim + 2;
       continue;
     }
     if (c === '(' || c === '{' || c === '[') depth++;
@@ -118,6 +120,7 @@ function splitTopLevel(src: string, sep: string): Cut {
       parts.push(src.slice(inicio, i));
       inicio = i + 1;
     }
+    i++;
   }
   parts.push(src.slice(inicio));
   return { parts };
@@ -139,17 +142,18 @@ function skipString(src: string, abre: number): number {
 /** Índice do `=` de atribuição de passo (depth 0, não `=>`, `<=`, `>=`, `<>`). */
 function assignIndex(src: string): number {
   let depth = 0;
-  for (let i = 0; i < src.length; i++) {
+  let i = 0;
+  while (i < src.length) {
     const c = src[i];
-    if (c === '"') { i = skipString(src, i); continue; }
+    if (c === '"') { i = skipString(src, i) + 1; continue; }
     if (c === '(' || c === '{' || c === '[') depth++;
     else if (c === ')' || c === '}' || c === ']') depth--;
     else if (depth === 0 && c === '=') {
       const antes = src[i - 1];
       const depois = src[i + 1];
-      if (antes === '<' || antes === '>' || depois === '=' || depois === '>') continue;
-      return i;
+      if (antes !== '<' && antes !== '>' && depois !== '=' && depois !== '>') return i;
     }
+    i++;
   }
   return -1;
 }
@@ -171,11 +175,12 @@ function mString(arg: string): string | null {
 /** Todas as strings literais de um argumento, em ordem. */
 function allStrings(arg: string): string[] {
   const out: string[] = [];
-  for (let i = 0; i < arg.length; i++) {
-    if (arg[i] !== '"') continue;
+  let i = 0;
+  while (i < arg.length) {
+    if (arg[i] !== '"') { i++; continue; }
     const fim = skipString(arg, i);
     out.push(arg.slice(i + 1, fim).replaceAll('""', '"'));
-    i = fim;
+    i = fim + 1;
   }
   return out;
 }
@@ -250,9 +255,10 @@ export function parseMSteps(m: string): MStep[] {
 /** Palavra-chave em profundidade 0 e fora de string. */
 function indexOfTopLevelWord(src: string, word: string): number {
   let depth = 0;
-  for (let i = 0; i < src.length; i++) {
+  let i = 0;
+  while (i < src.length) {
     const c = src[i];
-    if (c === '"') { i = skipString(src, i); continue; }
+    if (c === '"') { i = skipString(src, i) + 1; continue; }
     if (c === '(' || c === '{' || c === '[') depth++;
     else if (c === ')' || c === '}' || c === ']') depth--;
     else if (
@@ -260,6 +266,7 @@ function indexOfTopLevelWord(src: string, word: string): number {
       && !/[A-Za-z0-9_.]/.test(src[i - 1] ?? ' ')
       && !/[A-Za-z0-9_.]/.test(src[i + word.length] ?? ' ')
     ) return i;
+    i++;
   }
   return -1;
 }

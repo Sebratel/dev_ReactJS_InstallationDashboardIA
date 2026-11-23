@@ -80,7 +80,17 @@ grao_reduzido:
     # snapshot pede a forma completa, e os visuais de relato que saem pelo snapshot voltam
     # indisponíveis (passo 3b); o poller mede a cobertura da agenda pelo slot (ACHADOS #252).
     # EXIGE a Agendamento Field em `AO_VIVO_PAGINAS` — sem isso a subida avisa.
-    completa_no_snapshot: true
+    #
+    # **Esta chave já foi religada sem querer, e custou 520 MB de pico (ACHADOS #272).**
+    # De 17/11 a 19/11/2026 ela esteve em `true`: entrou de carona no commit cd63c7b
+    # (`feat(ia)`), junto com o refresh.yaml, de modo que `completa-no-snapshot.test.ts`
+    # continuou verde — ele cobra a COERÊNCIA entre os dois, não o custo. Com `true`, a
+    # carga de toda página que toca a FIELD AGENDA troca a `field-agenda-slot` (40.632
+    # linhas, 9,13 MB) pela `field-agenda` (595.854 linhas, 87,58 MB, 50,26 deles só da
+    # coluna `relato`): a visao-geral foi de 48,20 para 117,08 MB, e o pico com 200
+    # usuários de 1.406 para 1.926 MB. Quem religar isto de propósito tem de medir antes,
+    # com `npm run probe:peso-memoria` e `npm run probe:carga-usuarios`.
+    completa_no_snapshot: false
     # As listas dos seletores de relato (Classificação, Categoria de Produtividade,
     # Descrição) saem desta agregada do SRD — os valores distintos na janela da agenda —, e
     # não da página carregada com a agenda completa (passo 3, ACHADOS #248). Gerada por

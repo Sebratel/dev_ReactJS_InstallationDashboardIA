@@ -135,5 +135,5 @@ export function blockingProblems(problems: ModelRefProblem[]): ModelRefProblem[]
 
 /** Medidas/colunas distintas afetadas por erro, para relatório. */
 export function affectedOwners(problems: ModelRefProblem[]): string[] {
-  return [...new Set(blockingProblems(problems).map((p) => p.owner))].sort();
+  return [...new Set(blockingProblems(problems).map((p) => p.owner))].sort((a, b) => a.localeCompare(b));
 }

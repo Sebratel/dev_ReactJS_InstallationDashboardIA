@@ -13,12 +13,22 @@
 // Dos 195 campos, 163 são coluna crua, 21 agregação, 7 medida, 2 nível de
 // hierarquia e 2 aritméticos.
 
+import { normalizeName as normaliza } from '../../semantic-model/src/model.ts';
+import { dicionarioDaColuna, indiceDaLinha, type Row } from '../../measure-engine/src/dataset.ts';
 import type { EvalScope, Evaluator } from '../../measure-engine/src/evaluator.ts';
-import { DaxEvalError, isBlank, type DaxValue } from '../../measure-engine/src/value.ts';
+import { BLANK, DaxEvalError, isBlank, type DaxValue } from '../../measure-engine/src/value.ts';
 import { escopoComFiltros, valorDoCampo } from './card.ts';
 import { predicadoDeGrupo, separaFiltros, traduzFiltros } from './filtro.ts';
 import { casasDoNumero, casasDoPercentual } from './percentual.ts';
-import { agrupar, campoAtivo, chaveDoCampo, combinacoesDistintas, type Chave } from './grupos.ts';
+import {
+  agrupar,
+  campoAtivo,
+  chaveDoCampo,
+  combinacoesDistintas,
+  leitorDaChave,
+  linhasDistintasDeUmaTabela,
+  type Chave,
+} from './grupos.ts';
 import type { CampoSpec, DashboardSpec, VisualSpec } from './spec.ts';
 
 export interface CelulaTabela {
@@ -320,6 +330,183 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
         ? ordenaNativo(linhas.filter(temAlgumNumero), campos, visual, onde)
         : ordenaPorDataPadrao(linhas, campos.length),
     filtros: [...filtros.map((f) => f.origem), ...having.map((h) => h.origem)],
+  };
+}
+
+export interface ValorDeTabelaIndexada {
+  dashboard: string;
+  visual: string;
+  /** Tabela única de onde todas as colunas saem. */
+  tabela: string;
+  /** Quantas linhas a tabela tinha no dataset ao calcular — guarda de integridade. */
+  linhasDaTabela: number;
+  colunas: (string | null)[];
+  origemDasColunas: { tabela: string | null; coluna: string | null; nivel: string | null }[];
+  percentuais: (number | null)[];
+  casas: (number | null)[];
+  /** Primeiro valor não-branco de cada coluna (para inferir tipo sem revarrer). */
+  primeirosValores: DaxValue[];
+  /** Índices em `ev.dataset.rows(tabela)`, já deduplicados e na ordem padrão por data. */
+  indices: Int32Array;
+  filtros: string[];
+}
+
+/**
+ * Caminho enxuto para tabela `tableEx` que só tem chaves de UMA tabela (sem medidas,
+ * sem agregações, sem HAVING e não-nativa) — exatamente o caso das tabelas gigantes de
+ * detalhe como `INFORMAÇÕES GERAIS DOS PROTOCOLOS` (23 colunas × ~104 mil linhas).
+ *
+ * Em vez de alocar 2,4 milhões de objetos `CelulaTabela` e 104 MB de `unknown[][]`,
+ * devolve apenas um `Int32Array` com os índices das linhas em `ev.dataset.rows(tabela)`
+ * (~0,4 MB para 104 mil linhas). Quando a tabela não se enquadra, devolve `null` para o
+ * chamador seguir por `calculaTabela` sem mudar nada.
+ */
+export function calculaTabelaIndexada(
+  dash: DashboardSpec,
+  visual: VisualSpec,
+  ev: Evaluator,
+): ValorDeTabelaIndexada | null {
+  if (visual.type !== 'tableEx' || visual.origem === 'nativo') return null;
+  if ((visual.fields ?? []).length === 0) return null;
+  const campos = camposAtivos(visual);
+  if (campos.length === 0) return null;
+
+  const onde = `${dash.id}/${visual.id}`;
+  const { chaves, calculados } = separaCampos(visual, onde);
+  if (calculados.length > 0 || chaves.length === 0) return null;
+
+  const { deLinha, deGrupo } = separaFiltros([...(dash.filters ?? []), ...(visual.filters ?? [])]);
+  if (deGrupo.length > 0) return null;
+
+  const filtros = traduzFiltros(deLinha, ev, onde);
+  const base = escopoComFiltros(ev, filtros);
+  const linhasUnicas = linhasDistintasDeUmaTabela(chaves, base, ev, onde);
+  if (linhasUnicas === null) return null;
+
+  const tabela = chaves[0]!.tabela;
+  const todas = ev.dataset.rows(tabela);
+  const n = linhasUnicas.length;
+  const indices = new Int32Array(n);
+
+  let porLinha: Map<Row, number> | null = null;
+  for (let k = 0; k < n; k++) {
+    const linha = linhasUnicas[k]!;
+    const idx = indiceDaLinha(linha);
+    if (idx >= 0 && idx < todas.length && todas[idx] === linha) {
+      indices[k] = idx;
+      continue;
+    }
+    if (porLinha === null) {
+      porLinha = new Map<Row, number>();
+      for (let i = 0; i < todas.length; i++) porLinha.set(todas[i]!, i);
+    }
+    const achado = porLinha.get(linha);
+    if (achado === undefined) return null;
+    indices[k] = achado;
+  }
+
+  // Ordenação padrão pela primeira coluna de data (mais nova → mais velha, BLANK no fim),
+  // espelhando `ordenaPorDataPadrao` sem alocar `CelulaTabela[][]`.
+  const leitores = chaves.map((c) => leitorDaChave(c, ev, onde));
+  const molde = todas.length > 0 && indiceDaLinha(todas[0]!) >= 0 ? Object.getPrototypeOf(todas[0]!) : null;
+  let colData = -1;
+  for (let c = 0; c < chaves.length; c++) {
+    const chave = chaves[c]!;
+    if (!chave.nivel && molde !== null) {
+      const dic = dicionarioDaColuna(todas[0]!, normaliza(chave.coluna));
+      if (dic && !dic.valores.some((v) => v instanceof Date)) continue;
+    }
+    const ler = leitores[c]!;
+    let temData = false;
+    for (let k = 0; k < n; k++) {
+      if (ler(todas[indices[k]!]!) instanceof Date) {
+        temData = true;
+        break;
+      }
+    }
+    if (temData) {
+      colData = c;
+      break;
+    }
+  }
+
+  if (colData >= 0 && n > 1) {
+    const chave = chaves[colData]!;
+    const ler = leitores[colData]!;
+    const dic = !chave.nivel && molde !== null ? dicionarioDaColuna(todas[0]!, normaliza(chave.coluna)) : null;
+    let todosNoMolde = dic !== null;
+    if (todosNoMolde) {
+      for (let k = 0; k < n; k++) {
+        if (Object.getPrototypeOf(todas[indices[k]!]!) !== molde) {
+          todosNoMolde = false;
+          break;
+        }
+      }
+    }
+    if (todosNoMolde && dic !== null) {
+      const tsPorId = new Float64Array(dic.valores.length);
+      for (let i = 0; i < dic.valores.length; i++) {
+        const v = dic.valores[i]!;
+        tsPorId[i] = v instanceof Date ? v.getTime() : Number.NaN;
+      }
+      const ids = dic.ids;
+      indices.sort((a, b) => {
+        const ta = tsPorId[ids[indiceDaLinha(todas[a]!)]!]!;
+        const tb = tsPorId[ids[indiceDaLinha(todas[b]!)]!]!;
+        const aBlank = Number.isNaN(ta);
+        const bBlank = Number.isNaN(tb);
+        if (aBlank) return bBlank ? 0 : 1;
+        if (bBlank) return -1;
+        return tb - ta;
+      });
+    } else {
+      const tsPorLinha = new Float64Array(todas.length);
+      for (let k = 0; k < n; k++) {
+        const idx = indices[k]!;
+        const v = ler(todas[idx]!);
+        tsPorLinha[idx] = v instanceof Date ? v.getTime() : Number.NaN;
+      }
+      indices.sort((a, b) => {
+        const ta = tsPorLinha[a]!;
+        const tb = tsPorLinha[b]!;
+        const aBlank = Number.isNaN(ta);
+        const bBlank = Number.isNaN(tb);
+        if (aBlank) return bBlank ? 0 : 1;
+        if (bBlank) return -1;
+        return tb - ta;
+      });
+    }
+  }
+
+  // Primeiro valor não-branco de cada coluna (para `tipoDe` em `calcula.ts` sem `.map()`).
+  const primeirosValores: DaxValue[] = new Array(chaves.length).fill(BLANK);
+  for (let c = 0; c < chaves.length; c++) {
+    const ler = leitores[c]!;
+    for (let k = 0; k < n; k++) {
+      const v = ler(todas[indices[k]!]!);
+      if (!isBlank(v)) {
+        primeirosValores[c] = v;
+        break;
+      }
+    }
+  }
+
+  return {
+    dashboard: dash.id,
+    visual: visual.id,
+    tabela,
+    linhasDaTabela: todas.length,
+    colunas: campos.map((c) => c.name ?? null),
+    origemDasColunas: campos.map((c) => ({
+      tabela: c.entity,
+      coluna: c.property,
+      nivel: c.kind === 'hierarchy_level' ? (c.level ?? null) : null,
+    })),
+    percentuais: campos.map(() => null),
+    casas: campos.map(() => null),
+    primeirosValores,
+    indices,
+    filtros: filtros.map((f) => f.origem),
   };
 }
 

@@ -105,3 +105,6 @@ dados_ReactJS_CommercialDashboards/
 # a hora e a impressão do conteúdo. Versionado, ele passaria a mandar em `versao.ts` e a
 # API reportaria para sempre o commit do dia em que alguém o commitou.
 /versao.json
+
+# Diretório temporário gerado pelo SonarScanner
+.scannerwork/

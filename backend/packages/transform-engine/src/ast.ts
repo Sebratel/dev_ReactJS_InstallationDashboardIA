@@ -78,7 +78,7 @@ export interface MFunctionExpr extends Position {
 export interface MIf extends Position {
   readonly type: 'If';
   readonly cond: MNode;
-  readonly then: MNode;
+  readonly consequent: MNode;
   /** M **exige** `else`: não há `if` sem alternativa. */
   readonly otherwise: MNode;
 }

@@ -145,7 +145,7 @@ export function shaDasChaves(
   const h = createHash('sha256');
   // Nome canônico e ordem fixa: a mesma tabela lida por dois processos pode ter as
   // colunas em ordens diferentes no cabeçalho, e isso **não** é divergência de linha.
-  const chaves = [...colunas].map(normalizeName).sort();
+  const chaves = [...colunas].map(normalizeName).sort((a, b) => a.localeCompare(b));
   h.update(`${chaves.join(' ')}\n`);
   for (const linha of linhas) {
     for (const c of chaves) h.update(digito(linha[c] ?? null));
@@ -257,7 +257,7 @@ export function carimboDasCalculadas(dir: string): string {
   return fs
     .readdirSync(dir)
     .filter((f) => f.startsWith('calc.') && ehArquivoDeSnapshot(f))
-    .sort()
+    .sort((a, b) => a.localeCompare(b))
     .map((f) => {
       const s = fs.statSync(path.join(dir, f));
       return `${f}@${s.mtimeMs}#${s.size}`;

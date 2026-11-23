@@ -54,38 +54,44 @@ export function useVizinhanca(
   segmentacoes: readonly Segmentacao[],
   ativo: boolean,
 ): void {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
   // A lista de segmentações é refeita a cada render no `App`; o efeito depende só da
   // assinatura dela, senão recomeçaria a cada render.
   const segsRef = useRef(segmentacoes);
   useEffect(() => {
     segsRef.current = segmentacoes;
   });
-  const assinatura = segmentacoes.map((s) => `${s.tabela}|${s.coluna}|${s.nivel ?? ''}`).join('\n');
+  const assinatura = segmentacoes
+    .map((segmentacao) => `${segmentacao.tabela}|${segmentacao.coluna}|${segmentacao.nivel ?? ''}`)
+    .join('\n');
 
   useEffect(() => {
     if (!ativo || !pagina || !layout) return;
     if (!window.matchMedia('(pointer: fine)').matches) return;
     let parou = false;
-    const t = window.setTimeout(async () => {
-      const comValores: SegmentacaoComValores[] = segsRef.current.flatMap((s) => {
-        if (s.nivel || s.naoFiltra) return [];
-        const d = qc.getQueryData<ValoresDeColuna>(
-          chavesDeConsulta.valores(pagina, s.tabela, s.coluna, s.nivel),
-        );
-        if (!d || d.cortado || d.valores.length > LIMITE) return [];
-        return [
-          {
-            tabela: s.tabela,
-            coluna: s.coluna,
-            valores: d.valores.filter((v) => v.tipo !== 'date').map((v) => v.valor),
-          },
-        ];
-      });
+    /** Os valores já no cache desta segmentação — vazio quando ela não serve. */
+    const valoresNoCache = (segmentacao: (typeof segsRef.current)[number]) => {
+      if (segmentacao.nivel || segmentacao.naoFiltra) return [];
+      const cacheados = queryClient.getQueryData<ValoresDeColuna>(
+        chavesDeConsulta.valores(pagina, segmentacao.tabela, segmentacao.coluna, segmentacao.nivel),
+      );
+      if (!cacheados || cacheados.cortado || cacheados.valores.length > LIMITE) return [];
+      const semData = cacheados.valores.filter((valor) => valor.tipo !== 'date');
+      return [
+        {
+          tabela: segmentacao.tabela,
+          coluna: segmentacao.coluna,
+          valores: semData.map((valor) => valor.valor),
+        },
+      ];
+    };
+
+    const tempo = window.setTimeout(async () => {
+      const comValores: SegmentacaoComValores[] = segsRef.current.flatMap(valoresNoCache);
       // O período primeiro: era o clique mais lento do teste (até 32 s), e o mais comum.
       const data = dataDaPagina(pagina);
       const datas = data
-        ? qc.getQueryData<ValoresDeColuna>(
+        ? queryClient.getQueryData<ValoresDeColuna>(
             chavesDeConsulta.valores(pagina, data.tabela, data.coluna, null),
           )
         : undefined;
@@ -93,19 +99,27 @@ export function useVizinhanca(
         data && datas
           ? estadosDoPeriodo({ filtros, clicados }, data, montaArvore(datas.valores), TETO_PERIODO)
           : [];
-      for (const e of [...doPeriodo, ...estadosVizinhos({ filtros, clicados }, comValores, TETO)]) {
+      for (const evento of [
+        ...doPeriodo,
+        ...estadosVizinhos({ filtros, clicados }, comValores, TETO),
+      ]) {
         if (parou) return;
         // A abertura e os visuais `sobDemanda` dela, um por vez (`preCarregaEstado`): o
         // que já está fresco no cache sai dele, sem pedido. Falhar aqui não aparece em
         // lugar nenhum: o clique de verdade tenta de novo.
-        await preCarregaEstado(qc, pagina, layout, e.filtros, e.clicados, 'prefetch').catch(
-          () => undefined,
-        );
+        await preCarregaEstado(
+          queryClient,
+          pagina,
+          layout,
+          evento.filtros,
+          evento.clicados,
+          'prefetch',
+        ).catch(() => undefined);
       }
     }, ESPERA_MS);
     return () => {
       parou = true;
-      window.clearTimeout(t);
+      window.clearTimeout(tempo);
     };
-  }, [pagina, layout, filtros, clicados, assinatura, ativo, qc]);
+  }, [pagina, layout, filtros, clicados, assinatura, ativo, queryClient]);
 }

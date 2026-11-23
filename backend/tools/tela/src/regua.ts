@@ -63,7 +63,7 @@ if (modo === 'compara') {
   const eB = le(B, 'estilos.json');
   const c = novaComparacao();
   const arquivos = fs.readdirSync(A).filter((f) => f.endsWith('.json') && f !== 'estilos.json');
-  for (const f of arquivos.sort()) {
+  for (const f of arquivos.sort((a, b) => a.localeCompare(b))) {
     if (!fs.existsSync(path.join(B, f))) c.estrutura.push(`${f}: só em ${A}`);
     else comparaMedicao(c, f.replace('.json', ''), le(A, f), le(B, f), eA, eB, valores);
   }

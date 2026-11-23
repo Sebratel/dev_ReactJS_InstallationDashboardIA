@@ -1,9 +1,15 @@
 // Uma linha da árvore de datas (`ArvoreDeDatas.tsx`).
 
 import { useEffect, useRef } from 'react';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 
 /** Uma linha da árvore: seta de expandir, caixa de marcar e rótulo. */
+/** A seta do nó: nada quando ele não tem filhos. */
+function setaDoNo(temFilhos: boolean, aberto: boolean): string {
+  if (!temFilhos) return '';
+  return aberto ? '▾' : '▸';
+}
+
 export function NoDaArvore(props: {
   aberto: boolean;
   temFilhos: boolean;
@@ -28,10 +34,10 @@ export function NoDaArvore(props: {
         aria-label={props.aberto ? 'Recolher' : 'Expandir'}
         aria-expanded={props.aberto}
       >
-        {props.temFilhos ? (props.aberto ? '▾' : '▸') : ''}
+        {setaDoNo(props.temFilhos, props.aberto)}
       </button>
       <label
-        className={cn(
+        className={juntarClasses(
           'flex flex-[1_1_auto] cursor-pointer items-center gap-[8px] px-[4px] py-[3px] text-[0.74rem] text-pbi-ink',
           props.forte && 'font-bold',
         )}

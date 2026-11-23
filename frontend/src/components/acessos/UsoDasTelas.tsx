@@ -21,13 +21,16 @@ export function UsoDasTelas() {
   const telas = useMemo(
     () =>
       [...(usoQ.data?.telas ?? [])].sort(
-        (a, b) => b.aberturas - a.aberturas || a.nome.localeCompare(b.nome),
+        (primeiro, segundo) =>
+          segundo.aberturas - primeiro.aberturas || primeiro.nome.localeCompare(segundo.nome),
       ),
     [usoQ.data?.telas],
   );
   const comUso = telas.filter((tela) => tela.aberturas > 0);
   const maisAberta = comUso[0];
-  const menosAberta = [...comUso].sort((a, b) => a.aberturas - b.aberturas)[0];
+  const menosAberta = [...comUso].sort(
+    (primeiro, segundo) => primeiro.aberturas - segundo.aberturas,
+  )[0];
   const semUso = telas.filter((tela) => tela.aberturas === 0);
 
   return (

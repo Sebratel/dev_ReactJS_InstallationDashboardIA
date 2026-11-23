@@ -25,7 +25,7 @@ export interface RespostaDeMetas {
 export const CHAVE_METAS = ['metas'] as const;
 
 async function chama(corpo?: unknown): Promise<RespostaDeMetas> {
-  const r = await fetch(
+  const resposta = await fetch(
     '/api/admin/metas',
     corpo === undefined
       ? undefined
@@ -35,13 +35,13 @@ async function chama(corpo?: unknown): Promise<RespostaDeMetas> {
           body: JSON.stringify(corpo),
         },
   );
-  const json: unknown = await r.json().catch(() => null);
-  if (!r.ok) {
+  const json: unknown = await resposta.json().catch(() => null);
+  if (!resposta.ok) {
     const erro =
       json && typeof json === 'object' && 'erro' in json
         ? String(json.erro)
         : 'Não foi possível concluir agora. Tente novamente.';
-    throw Object.assign(new Error(erro), { status: r.status });
+    throw Object.assign(new Error(erro), { status: resposta.status });
   }
   return json as RespostaDeMetas;
 }

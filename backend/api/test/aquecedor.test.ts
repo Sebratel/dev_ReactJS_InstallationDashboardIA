@@ -289,7 +289,9 @@ test('API que não responde a lista não derruba nada — a próxima volta tenta
 test('para() encerra o laço', async () => {
   const { buscar } = apiFalsa();
   const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio() });
-  a.inicia();
-  a.para();
-  a.para(); // idempotente
+  assert.doesNotThrow(() => {
+    a.inicia();
+    a.para();
+    a.para(); // idempotente
+  });
 });

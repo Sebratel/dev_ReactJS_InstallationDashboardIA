@@ -12,7 +12,7 @@ import type { ReactNode } from 'react';
 import type { DashboardDaLista } from '../../services/dashboardService.ts';
 import type { EstadoAvisoSaude } from '../../utils/avisoSaude.ts';
 import { dataHora, haQuanto } from '../../utils/formato.ts';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 import { nomeDaAba } from '../../utils/ordemDasTelas.ts';
 import { Aviso, Erro } from '../ui/Cartao.tsx';
 import { SO_ICONE } from './soIcone.ts';
@@ -42,6 +42,27 @@ const PONTO: Record<
     sufixo: ' · fonte com falha',
   },
 };
+
+/**
+ * O que a barra diz sobre a idade do dado: a hora do tempo real quando ele está
+ * acompanhando, senão há quanto tempo o snapshot foi lido.
+ */
+function idadeDoDado(
+  horaDoTempoReal: string | null | undefined,
+  dadoDe: string | null | undefined,
+): string {
+  if (horaDoTempoReal) return `ao vivo · ${horaDoTempoReal}`;
+  return dadoDe ? haQuanto(dadoDe) : '—';
+}
+
+/** O que o mouse revela ali: o aviso de saúde, quando há, ou a data do snapshot. */
+function tituloDaIdade(
+  avisoSaude: { temAviso: boolean; mensagem: string } | undefined,
+  dadoDe: string | null | undefined,
+): string | undefined {
+  if (avisoSaude?.temAviso) return avisoSaude.mensagem;
+  return dadoDe ? `Dado de ${dataHora(dadoDe)}` : undefined;
+}
 
 export function AppShell(props: {
   paginas: DashboardDaLista[];
@@ -78,25 +99,20 @@ export function AppShell(props: {
   const ponto = PONTO[nivel];
   // O texto acompanha o ponto: "ao vivo" ao lado de um ponto vermelho dizia duas coisas
   // opostas. A explicação inteira está no aviso logo abaixo da barra de filtros.
-  const quando =
-    (props.ultimaAtualizacaoRealtime
-      ? `ao vivo · ${props.ultimaAtualizacaoRealtime}`
-      : props.dadoDe
-        ? haQuanto(props.dadoDe)
-        : '—') + ponto.sufixo;
+  const quando = idadeDoDado(props.ultimaAtualizacaoRealtime, props.dadoDe) + ponto.sufixo;
 
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-40 flex h-[var(--h-topbar)] flex-none items-center gap-[16px] border-b border-pbi-borda bg-pbi-superficie px-[14px]">
         <div className="flex flex-none items-center gap-[11px] font-bold tracking-[0.5px] whitespace-nowrap text-pbi-primary-texto">
           <img src="/logo-sebratel.svg" alt="Sebratel" className="block h-[34px] w-auto" />
-          <span className={cn('text-[12px] tracking-[0.9px]', SO_ICONE)}>
+          <span className={juntarClasses('text-[12px] tracking-[0.9px]', SO_ICONE)}>
             INST · RELATÓRIO INSTALAÇÃO
           </span>
         </div>
 
         <h1
-          className={cn(
+          className={juntarClasses(
             'm-0 min-w-0 flex-1 truncate text-center text-[16px] font-semibold tracking-[0.8px] text-pbi-ink uppercase',
             SOME_ESTREITO,
           )}
@@ -106,19 +122,13 @@ export function AppShell(props: {
 
         <div className="ml-auto flex items-center gap-[8px] text-[12.5px] whitespace-nowrap text-pbi-muted">
           <span
-            className={cn('ponto-vivo', ponto.classe)}
+            className={juntarClasses('ponto-vivo', ponto.classe)}
             title={props.avisoSaude?.temAviso ? props.avisoSaude.mensagem : ponto.title}
             aria-hidden="true"
           />
           <span
-            className={cn(SOME_ESTREITO, ponto.texto)}
-            title={
-              props.avisoSaude?.temAviso
-                ? props.avisoSaude.mensagem
-                : props.dadoDe
-                  ? `Dado de ${dataHora(props.dadoDe)}`
-                  : undefined
-            }
+            className={juntarClasses(SOME_ESTREITO, ponto.texto)}
+            title={tituloDaIdade(props.avisoSaude, props.dadoDe)}
           >
             {quando}
           </span>

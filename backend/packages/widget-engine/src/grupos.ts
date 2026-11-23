@@ -235,6 +235,37 @@ export function combinacoesDistintas(
 }
 
 /**
+ * Primeira linha física de cada combinação distinta quando TODAS as chaves vêm da
+ * MESMA tabela — ou `null` quando há mais de uma tabela ou zero chaves.
+ *
+ * Usa o mesmo `NumeradorDeCombinacoes` + `leitorDeNumeroDaChave` de `enumeraCombinacoes`,
+ * então a distinção e a ordem de primeira aparição são idênticas às de `combinacoesDistintas`,
+ * sem alocar um `DaxValue[]` por linha. Existe para `calculaTabelaIndexada` guardar apenas
+ * os índices das linhas (`Int32Array`) em vez de duplicar 100 mil × 23 células em RAM.
+ */
+export function linhasDistintasDeUmaTabela(
+  chaves: readonly Chave[],
+  base: EvalScope,
+  ev: Evaluator,
+  onde: string,
+): Row[] | null {
+  if (chaves.length === 0) return null;
+  const plano = planeja(chaves, base, ev, onde, []);
+  if (plano !== null) return null;
+
+  const n = chaves.length;
+  const numerador = new NumeradorDeCombinacoes(n);
+  const numeros = chaves.map((c, j) => leitorDeNumeroDaChave(c, j, numerador, ev, onde));
+  const unicas: Row[] = [];
+  for (const linha of base.filter.rowsOf(chaves[0]!.tabela)) {
+    let g = numeros[0]!(linha);
+    for (let j = 1; j < n; j++) g = numerador.junta(g, j, numeros[j]!(linha));
+    if (g === unicas.length) unicas.push(linha);
+  }
+  return unicas;
+}
+
+/**
  * O agrupamento com a **construção de filtro exposta**.
  *
  * `agrupar` basta para tabela e gráfico, onde cada linha é uma combinação e pronto.

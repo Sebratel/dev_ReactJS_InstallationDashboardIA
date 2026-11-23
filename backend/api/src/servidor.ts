@@ -210,7 +210,8 @@ const naoReaquece = (): Promise<void> => Promise.resolve();
 export function saudeCompletaPara(e: { autenticado: boolean; enderecoRemoto: string | undefined }): boolean {
   if (e.autenticado) return true;
   const a = e.enderecoRemoto ?? '';
-  return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
+  const normalizado = a.startsWith('::ffff:') ? a.slice(7) : a;
+  return normalizado === '127.0.0.1' || normalizado === '::1';
 }
 
 /** As chaves da saúde que carregam texto de erro cru (driver do banco, Redis, `fs.watch`). */
@@ -844,7 +845,9 @@ export class Servidor {
     });
 
     const url = new URL(req.url ?? '/', 'http://localhost');
-    const rota = url.pathname.replace(/\/+$/, '') || '/';
+    let rotaBruta = url.pathname;
+    while (rotaBruta.endsWith('/')) rotaBruta = rotaBruta.slice(0, -1);
+    const rota = rotaBruta || '/';
 
     // Autenticação: as ÚNICAS rotas que aceitam POST, e as únicas que criam ou
     // apagam estado (sessão) em vez de servir dado calculado. Ficam ANTES de
@@ -1310,7 +1313,7 @@ export class Servidor {
             bytes: manifesto.tabelas.reduce((a, t) => a + t.bytes, 0),
             dadoDe: maisAntigo(manifesto),
           },
-      paginasCarregadas: [...this.carregadas.keys()].sort(),
+      paginasCarregadas: [...this.carregadas.keys()].sort((a, b) => a.localeCompare(b)),
       dashboards: this.dashboards.length,
       cache: {
         adapter: this.tipoDeCache,
@@ -1923,7 +1926,7 @@ export class Servidor {
     if (req.method !== 'POST') {
       if (sub === '/historico') {
         try {
-          const email = new URL(req.url ?? '/', 'http://x').searchParams.get('email');
+          const email = new URL(req.url ?? '/', 'https://localhost').searchParams.get('email');
           responde(res, 200, { registros: await acesso.historico(quem, email) });
         } catch (err) {
           if (!(err instanceof ErroDeAcesso)) throw err;
@@ -3916,7 +3919,7 @@ export class Servidor {
     const { libera, formaCompleta } = this.#liberacaoDaPagina(dash);
     const chave = libera.length === 0 && formaCompleta.length === 0
       ? dash.id
-      : `${dash.id}\u0000${libera.sort().join(',')}\u0000${formaCompleta.sort().join(',')}`;
+      : `${dash.id}\u0000${libera.sort((a, b) => a.localeCompare(b)).join(',')}\u0000${formaCompleta.sort((a, b) => a.localeCompare(b)).join(',')}`;
 
     // **O snapshot mudou embaixo? Então o avaliador guardado é lixo.** Este mapa só
     // era limpo em erro, e a promessa do comentário do topo ("quem refaz é `npm run
@@ -4270,10 +4273,10 @@ export class Servidor {
     if (memo === undefined) {
       const amarrado = (dash.visuals ?? []).map((v) => this.sobDemandaDoVisual(dash, v.id));
       memo = {
-        libera: [...new Set(amarrado.flatMap((a) => a.colunas))].sort(),
+        libera: [...new Set(amarrado.flatMap((a) => a.colunas))].sort((a, b) => a.localeCompare(b)),
         formaCompleta: this.#soAsQueOSnapshotTem([
           ...new Set([...amarrado.flatMap((a) => a.tabelasCompletas), ...this.tabelasCompletasDaPagina(dash)]),
-        ]).sort(),
+        ]).sort((a, b) => a.localeCompare(b)),
       };
       this.liberacaoPorPagina.set(dash.id, memo);
     }
@@ -4295,7 +4298,7 @@ export class Servidor {
       const t = tabelasCompletas.get(normalizeName(rotuloDeColuna(f.entity, f.property)));
       if (t) completas.add(t);
     }
-    return { libera: [...new Set(amarrado.flatMap((a) => a.colunas))].sort(), formaCompleta: this.#soAsQueOSnapshotTem([...completas]).sort() };
+    return { libera: [...new Set(amarrado.flatMap((a) => a.colunas))].sort((a, b) => a.localeCompare(b)), formaCompleta: this.#soAsQueOSnapshotTem([...completas]).sort((a, b) => a.localeCompare(b)) };
   }
 
   /**
@@ -4451,7 +4454,7 @@ export class Servidor {
         queries.add(g.queryPadrao);
         if (!g.completaNoSnapshot) queries.delete(g.queryCompleta);
       }
-      return [...queries].sort();
+      return [...queries].sort((a, b) => a.localeCompare(b));
     } catch {
       // `planeja` erra alto em página com tabela que não tem como ser
       // materializada. Na listagem isso é "não está pronta", não uma falha: um id

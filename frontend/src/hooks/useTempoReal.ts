@@ -17,8 +17,8 @@ const ATUALIZA_SOZINHA_S = 60;
 /** Detalhes já visitados aceitam frescor menor e não acompanham cada evento operacional. */
 const ATUALIZA_DETALHES_S = 5 * 60;
 
-function invalidaAbertura(qc: QueryClient, pagina: string): Promise<void> {
-  return qc.invalidateQueries({
+function invalidaAbertura(queryClient: QueryClient, pagina: string): Promise<void> {
+  return queryClient.invalidateQueries({
     queryKey: chavesDeConsulta.pagina(pagina),
     predicate: (query) => query.meta?.tempoReal === true,
   });
@@ -38,7 +38,7 @@ export interface TempoReal {
 
 /** Só existe com sessão: a `DashboardPage` só monta logada (ver `App.tsx`). */
 export function useTempoReal(atual: string | null): TempoReal {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
   const [horaRealtime, setHoraRealtime] = useState<string | null>(null);
 
   const marcaHora = useCallback(() => {
@@ -65,20 +65,20 @@ export function useTempoReal(atual: string | null): TempoReal {
     const interval = setInterval(() => {
       if (!atualRef.current) return;
       marcaHora();
-      void invalidaAbertura(qc, atualRef.current);
-      void qc.invalidateQueries({ queryKey: chavesDeConsulta.saude });
+      void invalidaAbertura(queryClient, atualRef.current);
+      void queryClient.invalidateQueries({ queryKey: chavesDeConsulta.saude });
     }, ATUALIZA_SOZINHA_S * 1000);
     return () => clearInterval(interval);
-  }, [atual, qc, marcaHora]);
+  }, [atual, queryClient, marcaHora]);
 
   useEffect(() => {
     if (!atual) return;
     const interval = setInterval(() => {
       if (!atualRef.current) return;
-      void qc.invalidateQueries({ queryKey: chavesDeConsulta.pagina(atualRef.current) });
+      void queryClient.invalidateQueries({ queryKey: chavesDeConsulta.pagina(atualRef.current) });
     }, ATUALIZA_DETALHES_S * 1000);
     return () => clearInterval(interval);
-  }, [atual, qc]);
+  }, [atual, queryClient]);
 
   // ACHADOS #89/#90 — poller de quase-realtime: o servidor empurra por SSE quando
   // detecta mudança no Voalle. Nenhum dado chega pelo evento em si (só o id da
@@ -87,35 +87,35 @@ export function useTempoReal(atual: string | null): TempoReal {
   useEffect(() => {
     return assinaEventos(
       (afetados) => {
-        for (const id of afetados) void invalidaAbertura(qc, id);
+        for (const id of afetados) void invalidaAbertura(queryClient, id);
         if (atualRef.current && afetados.includes(atualRef.current)) {
           marcaHora();
-          void qc.invalidateQueries({ queryKey: chavesDeConsulta.saude });
+          void queryClient.invalidateQueries({ queryKey: chavesDeConsulta.saude });
         }
       },
       // Acessos mudaram (Permissões salva, ou o banco mudou): a lista de abas e o papel
       // vêm de novo, e `useAcessosAoVivo` larga o que a conta perdeu — sem F5. A matriz
       // de quem gere também, para dois admins verem a mudança um do outro.
-      () => releAcessos(qc),
+      () => releAcessos(queryClient),
       // Se o SSE caiu (ex.: restart da API) e reconectou, revalida a página aberta e a saúde
       // na hora para não esperar até 60 s pelo relógio de segurança.
       () => {
         if (!atualRef.current) return;
         marcaHora();
-        void invalidaAbertura(qc, atualRef.current);
-        void qc.invalidateQueries({ queryKey: chavesDeConsulta.saude });
+        void invalidaAbertura(queryClient, atualRef.current);
+        void queryClient.invalidateQueries({ queryKey: chavesDeConsulta.saude });
       },
     );
-  }, [qc, marcaHora]);
+  }, [queryClient, marcaHora]);
 
   const atualiza = useCallback(() => {
     if (!atual) return;
     marcaHora();
     pedeAtualizacaoAgora();
-    void qc.invalidateQueries({ queryKey: chavesDeConsulta.pagina(atual) });
-    void qc.invalidateQueries({ queryKey: chavesDeConsulta.valores(atual) });
-    void qc.invalidateQueries({ queryKey: chavesDeConsulta.saude });
-  }, [atual, qc, marcaHora]);
+    void queryClient.invalidateQueries({ queryKey: chavesDeConsulta.pagina(atual) });
+    void queryClient.invalidateQueries({ queryKey: chavesDeConsulta.valores(atual) });
+    void queryClient.invalidateQueries({ queryKey: chavesDeConsulta.saude });
+  }, [atual, queryClient, marcaHora]);
 
   return { horaRealtime, atualiza };
 }

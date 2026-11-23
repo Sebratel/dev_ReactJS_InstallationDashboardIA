@@ -115,7 +115,7 @@ function compara(nome: string, colunas: readonly string[], ref: Record<string, E
   );
   if (!iguais) {
     const difere = colunas.filter(
-      (c) => hash(ref.map((l) => texto(celula(l, c))).sort()) !== hash(vivo.map((l) => texto(celula(l, c))).sort()),
+      (c) => hash(ref.map((l) => texto(celula(l, c))).sort((a, b) => a.localeCompare(b))) !== hash(vivo.map((l) => texto(celula(l, c))).sort((a, b) => a.localeCompare(b))),
     );
     console.log(`    colunas cujo multiconjunto difere: ${difere.join(', ') || '(nenhuma — muda só a combinação)'}`);
   }
@@ -194,7 +194,7 @@ try {
     confere('Status Protocolo Dia', compara('Status Protocolo Dia', colunasStatus, refStatus, vivoStatus));
     const porStatus = (ls: Record<string, Escalar>[]) =>
       [...ls.reduce((m, l) => m.set(String(l['status']), (m.get(String(l['status'])) ?? 0) + 1), new Map<string, number>())]
-        .sort()
+        .sort(([a], [b]) => a.localeCompare(b))
         .map(([s, n]) => `${s} ${n}`)
         .join(', ');
     console.log(`    referência: ${porStatus(refStatus)}\n    ao vivo:    ${porStatus(vivoStatus)}`);

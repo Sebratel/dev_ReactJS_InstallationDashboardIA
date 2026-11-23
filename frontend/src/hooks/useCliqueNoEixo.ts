@@ -40,13 +40,14 @@ export function useCliqueNoEixo(
    * categoria inteira for nula, não sobra alvo e o clique não faz nada.
    */
   const chavesDeEixo = chavesDeEixoDe(chaves as ChaveDoGrafico[]);
-  const alvosDa = (i: number) => alvosDaCategoria(chavesDeEixo, categorias[i]?.valores ?? []);
+  const alvosDa = (indice: number) =>
+    alvosDaCategoria(chavesDeEixo, categorias[indice]?.valores ?? []);
 
   /**
    * CURSOR DE MÃO SÓ ONDE O CLIQUE FILTRA. A categoria que não filtra (nula, eixo sem
    * tabela) não pode parecer igual à que filtra — promessa falsa nos dois sentidos.
    */
-  const podeClicar = (i: number) => aoFiltrar !== undefined && alvosDa(i).length > 0;
+  const podeClicar = (indice: number) => aoFiltrar !== undefined && alvosDa(indice).length > 0;
 
   /**
    * O QUE ESTÁ SELECIONADO NO EIXO. Com a auto-exclusão do servidor, o visual clicado
@@ -55,24 +56,24 @@ export function useCliqueNoEixo(
    * Sem filtro em nenhum nível do eixo, nada esmaece.
    */
   const selecaoDoEixo = selecaoDoEixoDe(chavesDeEixo, filtros);
-  const haSelecao = selecaoDoEixo.some((s) => s !== null);
-  const estaSelecionada = (i: number) =>
-    estaSelecionadaCategoria(selecaoDoEixo, categorias[i]?.valores ?? []);
+  const haSelecao = selecaoDoEixo.some((serie) => serie !== null);
+  const estaSelecionada = (indice: number) =>
+    estaSelecionadaCategoria(selecaoDoEixo, categorias[indice]?.valores ?? []);
 
   return {
     sob,
-    classeDa: (i) =>
+    classeDa: (indice) =>
       'col-grupo' +
-      (podeClicar(i) ? ' clicavel' : '') +
-      (haSelecao && !estaSelecionada(i) ? ' apagada' : ''),
-    aoEntrar: (i) => {
-      setSob(i);
-      if (podeClicar(i)) aoPrever?.(alvosDa(i));
+      (podeClicar(indice) ? ' clicavel' : '') +
+      (haSelecao && !estaSelecionada(indice) ? ' apagada' : ''),
+    aoEntrar: (indice) => {
+      setSob(indice);
+      if (podeClicar(indice)) aoPrever?.(alvosDa(indice));
     },
     aoSair: () => setSob(null),
-    clica: (i) => {
+    clica: (indice) => {
       if (!aoFiltrar) return;
-      const alvos = alvosDa(i);
+      const alvos = alvosDa(indice);
       if (alvos.length > 0) aoFiltrar(alvos);
     },
   };

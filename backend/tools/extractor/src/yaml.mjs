@@ -23,7 +23,9 @@ function emitScalar(value, indent) {
   if (str.includes('\n')) {
     // block scalar; cada linha recuada com indent+2
     const pad = ' '.repeat(indent + 2);
-    const lines = str.replace(/\n+$/, '').split('\n');
+    let fim = str.length;
+  while (fim > 0 && str[fim - 1] === '\n') fim--;
+  const lines = str.slice(0, fim).split('\n');
     return '|-\n' + lines.map((l) => (l === '' ? '' : pad + l)).join('\n');
   }
   if (needsQuote(str)) return JSON.stringify(str);

@@ -47,6 +47,21 @@ import { MensagemDeEstado } from '../ui/Estado.tsx';
 /** Abaixo de 4 categorias por página o gráfico deixa de comunicar tendência. */
 const MINIMO_POR_PAGINA = 4;
 
+/**
+ * O subtítulo do cartão. Em conferência ele conta pontos e séries; fora dela, só diz se
+ * o gráfico está em 100% empilhado — o que muda como o número se lê.
+ */
+function subtituloDoGrafico(
+  emConferencia: boolean,
+  pontos: number,
+  series: number,
+  percentual: boolean | undefined,
+): string[] {
+  const empilhado = percentual ? ['100% empilhado'] : [];
+  if (!emConferencia) return empilhado;
+  return [`${inteiro(pontos)} pontos`, `${series} série(s)`, ...empilhado];
+}
+
 export function Grafico({
   visual,
   aoFiltrar,
@@ -67,16 +82,22 @@ export function Grafico({
   const [inicio, setInicio] = useState<number | null>(null);
   const [caixaRef, caixa] = useCaixa();
 
-  const d = visual.dados as DadosDeGrafico | undefined;
-  const gTudo = useMemo(() => (d && d.series && d.pontos ? montaGrafico(d) : null), [d]);
+  const dadosDoGrafico = visual.dados as DadosDeGrafico | undefined;
+  const gTudo = useMemo(
+    () =>
+      dadosDoGrafico && dadosDoGrafico.series && dadosDoGrafico.pontos
+        ? montaGrafico(dadosDoGrafico)
+        : null,
+    [dadosDoGrafico],
+  );
 
   // Os níveis de cada categoria sem o prefixo comum a TODAS (ver `prefixoComum`), e o
   // maior rótulo que o eixo vai desenhar. Calculado aqui, antes da janela, porque é ele
   // que diz quantas categorias cabem numa página — ver `bandaMinimaPara`.
   const partesPorCat = useMemo(
     () =>
-      (gTudo?.categorias ?? []).map((c) =>
-        c.eixo !== undefined ? [c.eixo] : c.rotulo.split(' / '),
+      (gTudo?.categorias ?? []).map((categoria) =>
+        categoria.eixo !== undefined ? [categoria.eixo] : categoria.rotulo.split(' / '),
       ),
     [gTudo],
   );
@@ -84,8 +105,11 @@ export function Grafico({
   const maiorRotulo = useMemo(
     () =>
       (gTudo?.categorias ?? []).reduce(
-        (maior, c, i) =>
-          Math.max(maior, rotuloDoEixo(partesPorCat[i]?.slice(comum) ?? [], c.rotulo, 999).length),
+        (maior, categoria, indice) =>
+          Math.max(
+            maior,
+            rotuloDoEixo(partesPorCat[indice]?.slice(comum) ?? [], categoria.rotulo, 999).length,
+          ),
         1,
       ),
     [gTudo, partesPorCat, comum],
@@ -108,33 +132,33 @@ export function Grafico({
   const maxInicio = Math.max(0, nTotal - pagina);
   const fimComDado = gTudo ? ultimaCategoriaComDado(gTudo.series) + 1 : nTotal;
   const inicioPadrao = Math.min(maxInicio, Math.max(0, fimComDado - pagina));
-  const de = Math.min(inicio ?? inicioPadrao, maxInicio);
-  const ate = Math.min(de + pagina, nTotal);
+  const deslocamento = Math.min(inicio ?? inicioPadrao, maxInicio);
+  const ate = Math.min(deslocamento + pagina, nTotal);
 
   /** Só a fatia visível, já com a cor do tema. O `teto` vem do TODO — ver abaixo. */
-  const g = useMemo(() => {
+  const grafico = useMemo(() => {
     if (!gTudo) return null;
-    const inteira = de === 0 && ate >= nTotal;
+    const inteira = deslocamento === 0 && ate >= nTotal;
     return {
       ...gTudo,
-      categorias: inteira ? gTudo.categorias : gTudo.categorias.slice(de, ate),
-      series: gTudo.series.map((s) => ({
-        ...s,
-        cor: corNoTema(s.cor, isDark),
-        valores: inteira ? s.valores : s.valores.slice(de, ate),
+      categorias: inteira ? gTudo.categorias : gTudo.categorias.slice(deslocamento, ate),
+      series: gTudo.series.map((serie) => ({
+        ...serie,
+        cor: corNoTema(serie.cor, isDark),
+        valores: inteira ? serie.valores : serie.valores.slice(deslocamento, ate),
       })),
     };
-  }, [gTudo, de, ate, nTotal, isDark]);
+  }, [gTudo, deslocamento, ate, nTotal, isDark]);
 
   const clique = useCliqueNoEixo(
-    d?.chaves ?? [],
-    g?.categorias ?? [],
+    dadosDoGrafico?.chaves ?? [],
+    grafico?.categorias ?? [],
     filtros,
     aoFiltrar,
     aoPrever,
   );
 
-  if (!d || !g || !gTudo) {
+  if (!dadosDoGrafico || !grafico || !gTudo) {
     return (
       <Cartao titulo={tituloDoVisual(visual)} id={visual.id} altura="grafico">
         <MensagemDeEstado>Sem dados disponíveis para o gráfico.</MensagemDeEstado>
@@ -142,20 +166,20 @@ export function Grafico({
     );
   }
 
-  const areas = g.series.filter((s) => s.desenho === 'area');
-  const linhas = g.series.filter((s) => s.desenho === 'linha');
-  const naFaceta = g.facetada !== null;
+  const areas = grafico.series.filter((serie) => serie.desenho === 'area');
+  const linhas = grafico.series.filter((serie) => serie.desenho === 'linha');
+  const naFaceta = grafico.facetada !== null;
 
   // O TETO SAI DE TODAS AS CATEGORIAS, não das visíveis — ver `geometriaDoGrafico`.
-  const linhasDoTudo = naFaceta ? [] : gTudo.series.filter((x) => x.desenho === 'linha');
+  const linhasDoTudo = naFaceta ? [] : gTudo.series.filter((serie) => serie.desenho === 'linha');
   // ONDE O NÚMERO APARECE (19/11/2026) — a regra está em `utils/graficoRotulos.ts`, com
   // o porquê de cada caso e os testes. Aqui só se descreve a forma desta janela.
   const forma = {
     nAreas: areas.length,
     nLinhas: linhas.length,
-    empilha: g.empilha,
-    percentual: g.percentual,
-    nCategorias: g.categorias.length,
+    empilha: grafico.empilha,
+    percentual: grafico.percentual,
+    nCategorias: grafico.categorias.length,
     naFaceta,
   };
   const rotulos = modoDeRotulo(forma);
@@ -164,36 +188,35 @@ export function Grafico({
   const { geo, marcas } = geometriaDoGrafico({
     alturaDaCaixa: caixa.h,
     larguraDoPlot,
-    nCategorias: g.categorias.length,
+    nCategorias: grafico.categorias.length,
     naFaceta,
     teto: gTudo.percentual
       ? 100
       : maiorValorDe(linhasDoTudo, tetoDasAreas(gTudo.series, gTudo.empilha)),
-    empilha: g.empilha,
+    empilha: grafico.empilha,
     nAreas: areas.length,
     comRotulos,
   });
 
-  const sub = conferencia
-    ? [
-        `${inteiro(d.pontos.length)} pontos`,
-        `${g.series.length} série(s)`,
-        ...(g.percentual ? ['100% empilhado'] : []),
-      ]
-    : g.percentual
-      ? ['100% empilhado']
-      : [];
-  const titulo = tituloDeGrafico(visual, d);
+  const sub = subtituloDoGrafico(
+    conferencia,
+    dadosDoGrafico.pontos.length,
+    grafico.series.length,
+    grafico.percentual,
+  );
+  const titulo = tituloDeGrafico(visual, dadosDoGrafico);
 
   // `partesPorCat` e `comum` saem de TODAS as categorias e já foram calculados lá em
   // cima, junto com `maiorRotulo` — aqui só se recorta a janela visível.
-  const partesVisiveis = g.categorias.map((_, i) => partesPorCat[de + i]?.slice(comum) ?? []);
+  const partesVisiveis = grafico.categorias.map(
+    (_, indice) => partesPorCat[deslocamento + indice]?.slice(comum) ?? [],
+  );
 
   const acoesGrafico = (
     <div className="grupo-acoes-grafico">
       {precisaPaginar ? (
         <PaginadorDeJanela
-          de={de}
+          de={deslocamento}
           ate={ate}
           total={nTotal}
           maxInicio={maxInicio}
@@ -232,11 +255,11 @@ export function Grafico({
       altura="grafico"
       acoes={acoesGrafico}
     >
-      {g.series.length > 1 ? <LegendaDoGrafico series={g.series} /> : null}
+      {grafico.series.length > 1 ? <LegendaDoGrafico series={grafico.series} /> : null}
 
-      {g.avisos.map((a) => (
-        <p className="aviso-grafico" key={a}>
-          {a}
+      {grafico.avisos.map((aviso) => (
+        <p className="aviso-grafico" key={aviso}>
+          {aviso}
         </p>
       ))}
 
@@ -248,17 +271,17 @@ export function Grafico({
           altura={caixa.h}
           ariaLabel={
             tituloDoVisual(visual) +
-            (precisaPaginar ? ` — categorias ${de + 1} a ${ate} de ${nTotal}` : '')
+            (precisaPaginar ? ` — categorias ${deslocamento + 1} a ${ate} de ${nTotal}` : '')
           }
-          categorias={g.categorias}
+          categorias={grafico.categorias}
           partes={partesVisiveis}
           areas={areas}
           linhas={linhas}
-          empilha={g.empilha}
-          percentual={g.percentual}
+          empilha={grafico.empilha}
+          percentual={grafico.percentual}
           naFaceta={naFaceta}
-          tipo={d.tiposDeSerie[0] ?? null}
-          casas={d.casasDasSeries?.[0] ?? null}
+          tipo={dadosDoGrafico.tiposDeSerie[0] ?? null}
+          casas={dadosDoGrafico.casasDasSeries?.[0] ?? null}
           marcas={marcas}
           geo={geo}
           interacao={clique}
@@ -275,10 +298,10 @@ function ultimaCategoriaComDado(
   series: readonly { valores: readonly (number | null)[] }[],
 ): number {
   let ultima = -1;
-  for (const s of series) {
-    for (let i = s.valores.length - 1; i > ultima; i--) {
-      if (s.valores[i] !== null && s.valores[i] !== 0) {
-        ultima = i;
+  for (const serie of series) {
+    for (let indice = serie.valores.length - 1; indice > ultima; indice--) {
+      if (serie.valores[indice] !== null && serie.valores[indice] !== 0) {
+        ultima = indice;
         break;
       }
     }

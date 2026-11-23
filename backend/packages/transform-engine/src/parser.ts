@@ -162,11 +162,11 @@ class Parser {
     const t = this.exige('keyword', 'if', 'no início da condição');
     const cond = this.expressao();
     this.exige('keyword', 'then', 'depois da condição do `if`');
-    const then = this.expressao();
+    const consequent = this.expressao();
     // Em M o `else` é obrigatório. Exigir aqui transforma um `if` truncado em
     // erro apontado, em vez de "sobrou `,`" três passos adiante.
     this.exige('keyword', 'else', 'no `if` (M não tem `if` sem `else`)');
-    return { type: 'If', cond, then, otherwise: this.expressao(), ...this.pos(t) };
+    return { type: 'If', cond, consequent, otherwise: this.expressao(), ...this.pos(t) };
   }
 
   /** `(` seguido de lista de parâmetros e `=>`, sem consumir nada. */

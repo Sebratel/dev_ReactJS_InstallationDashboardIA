@@ -22,7 +22,7 @@ import { useEffect, type ReactNode } from 'react';
 import type { DashboardDaLista } from '../../services/dashboardService.ts';
 import { useAlturaMedida } from '../../hooks/useAlturaMedida.ts';
 import { useRolagemHorizontal } from '../../hooks/useRolagemHorizontal.ts';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 import { nomeDaAba, ordenaTelas } from '../../utils/ordemDasTelas.ts';
 
 /** A aba: maiúsculas, apagada; a ativa vai para a primária com o sublinhado. A borda e o
@@ -43,7 +43,7 @@ function SetaDeRolagem(props: { lado: 'esquerda' | 'direita'; aoClicar: () => vo
   return (
     <button
       type="button"
-      className={cn(SETA, esquerda ? 'left-0 border-r' : 'right-0 border-l')}
+      className={juntarClasses(SETA, esquerda ? 'left-0 border-r' : 'right-0 border-l')}
       onClick={props.aoClicar}
       title={esquerda ? 'Abas anteriores' : 'Mais abas'}
       // FORA da ordem de tabulação, e por isso não é barreira de acessibilidade: quem
@@ -106,37 +106,41 @@ export function NavDeTelas(props: {
         aria-label="Telas do relatório"
       >
         {/* A ordem do relatório original, não a alfabética da API — `ordemDasTelas.ts`. */}
-        {ordenaTelas(props.paginas).map((p) => {
-          const ativo = p.id === props.atual;
+        {ordenaTelas(props.paginas).map((ponto) => {
+          const ativo = ponto.id === props.atual;
           return (
             <button
-              key={p.id}
-              className={cn(
+              key={ponto.id}
+              className={juntarClasses(
                 ABA,
                 ativo &&
                   'border-b-pbi-primary-texto text-pbi-primary-texto enabled:hover:bg-transparent enabled:hover:text-pbi-primary-texto',
               )}
-              onClick={() => props.aoEscolher(p.id)}
+              onClick={() => props.aoEscolher(ponto.id)}
               // Nem a aba já ativa (nada para adiantar) nem uma sem snapshot (o clique nem
               // chega a `aoEscolher` — `disabled` abaixo já barra isso).
-              onMouseEnter={ativo || !p.pronta ? undefined : () => props.aoPassarMouse?.(p.id)}
-              onMouseLeave={ativo || !p.pronta ? undefined : () => props.aoSairDoMouse?.()}
-              disabled={!p.pronta}
+              onMouseEnter={
+                ativo || !ponto.pronta ? undefined : () => props.aoPassarMouse?.(ponto.id)
+              }
+              onMouseLeave={ativo || !ponto.pronta ? undefined : () => props.aoSairDoMouse?.()}
+              disabled={!ponto.pronta}
               aria-current={ativo ? 'page' : undefined}
-              title={p.pronta ? nomeDaAba(p.nome) : `${nomeDaAba(p.nome)} — sem snapshot`}
+              title={
+                ponto.pronta ? nomeDaAba(ponto.nome) : `${nomeDaAba(ponto.nome)} — sem snapshot`
+              }
             >
-              {nomeDaAba(p.nome)}
+              {nomeDaAba(ponto.nome)}
             </button>
           );
         })}
-        {(props.extras ?? []).map((extra, i) => (
+        {(props.extras ?? []).map((extra, indice) => (
           <button
             key={extra.id}
-            className={cn(
+            className={juntarClasses(
               ABA,
               // Só a primeira empurra: `ml-auto` em todas separaria uma da outra e elas
               // deixariam de parecer um grupo no canto direito.
-              i === 0 && 'ml-auto',
+              indice === 0 && 'ml-auto',
               extra.id === props.atual &&
                 'border-b-pbi-primary-texto text-pbi-primary-texto enabled:hover:bg-transparent enabled:hover:text-pbi-primary-texto',
             )}

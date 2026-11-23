@@ -7,13 +7,13 @@
 // corte de `prefers-reduced-motion`.
 
 import type { ReactNode } from 'react';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 
 /** Uma barra do esqueleto; `className` troca a altura (o KPI usa 40px). */
 export function EsqueletoLinha({ className }: { className?: string }) {
   return (
     <div
-      className={cn(
+      className={juntarClasses(
         'brilho relative h-[68px] overflow-hidden rounded-[2px] border border-pbi-borda bg-pbi-superficie',
         className,
       )}

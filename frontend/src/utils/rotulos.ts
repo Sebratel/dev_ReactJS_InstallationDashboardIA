@@ -93,8 +93,8 @@ export function tituloDeTabela(
   if (visual.titulo?.trim()) return visual.titulo.trim();
   const cols = colunas ?? [];
   const derivado = frase(
-    nomesUteis(cols.filter((c) => !c.chave).map((c) => c.nome)),
-    nomesUteis(cols.filter((c) => c.chave).map((c) => c.nome)),
+    nomesUteis(cols.filter((coluna) => !coluna.chave).map((coluna) => coluna.nome)),
+    nomesUteis(cols.filter((coluna) => coluna.chave).map((coluna) => coluna.nome)),
   );
   return derivado ?? tituloDoVisual(visual);
 }
@@ -117,7 +117,8 @@ export function tituloDeMatriz(
 ): string {
   if (visual.titulo?.trim()) return visual.titulo.trim();
   if (!dados) return tituloDoVisual(visual);
-  const chave = (k: { nome: string | null; coluna: string }) => k.nome ?? k.coluna;
+  const chave = (indiceSerie: { nome: string | null; coluna: string }) =>
+    indiceSerie.nome ?? indiceSerie.coluna;
   const derivado = frase(
     nomesUteis(dados.medidas),
     nomesUteis([...dados.chavesDeLinha.map(chave), ...dados.chavesDeColuna.map(chave)]),
@@ -134,8 +135,10 @@ export function tituloDeGrafico(
   dados: { chaves?: readonly unknown[]; series?: readonly { nome?: string | null }[] },
 ): string {
   const chaves = (dados.chaves ?? []) as { papel?: string; nome?: string; coluna?: string }[];
-  const eixo = chaves.find((c) => (c.papel ?? 'Category') === 'Category');
-  const nomesMedidas = (dados.series ?? []).map((s) => s.nome).filter((n): n is string => !!n);
+  const eixo = chaves.find((chave) => (chave.papel ?? 'Category') === 'Category');
+  const nomesMedidas = (dados.series ?? [])
+    .map((serie) => serie.nome)
+    .filter((serie): serie is string => !!serie);
   const nomeEixo = eixo?.nome ?? eixo?.coluna;
   return visual.titulo?.trim() || !(nomesMedidas.length && nomeEixo)
     ? tituloDoVisual(visual)
@@ -188,7 +191,7 @@ export function rotuloDeCampo(nome: string): string {
     .toLowerCase()
     .split(/\s+/)
     .filter(Boolean)
-    .map((p) => ACENTOS[p] ?? p);
+    .map((ponto) => ACENTOS[ponto] ?? ponto);
   const texto = palavras.join(' ');
   const frase = texto.charAt(0).toUpperCase() + texto.slice(1);
   return nivel ? `${frase} (${nivel[1]!.toLowerCase()})` : frase;

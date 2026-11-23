@@ -8,10 +8,10 @@ import { assertReadOnly, postgresRunner, mariaRunner, nomesSemDuplicata } from '
 import { loadDotEnv } from '../src/config.ts';
 
 test('assertReadOnly: permite SELECT e CTE de leitura', () => {
-  assertReadOnly('select 1');
-  assertReadOnly('SELECT a, b FROM contracts WHERE x = 1');
-  assertReadOnly('with p as (select 1) select * from p');
-  assertReadOnly('select * from t order by a; '); // ponto-e-vírgula final é ok
+  assert.doesNotThrow(() => assertReadOnly('select 1'));
+  assert.doesNotThrow(() => assertReadOnly('SELECT a, b FROM contracts WHERE x = 1'));
+  assert.doesNotThrow(() => assertReadOnly('with p as (select 1) select * from p'));
+  assert.doesNotThrow(() => assertReadOnly('select * from t order by a; ')); // ponto-e-vírgula final é ok
 });
 
 test('assertReadOnly: bloqueia comandos de escrita', () => {
@@ -41,14 +41,14 @@ test('assertReadOnly: bloqueia múltiplos statements', () => {
 
 test('assertReadOnly: não confunde palavra proibida dentro de string ou comentário', () => {
   // "update" aparece só como dado/comentário — deve passar
-  assertReadOnly("select * from logs where acao = 'update'");
-  assertReadOnly('select a from t -- update depois\n');
-  assertReadOnly('/* delete antigo */ select 1');
+  assert.doesNotThrow(() => assertReadOnly("select * from logs where acao = 'update'"));
+  assert.doesNotThrow(() => assertReadOnly('select a from t -- update depois\n'));
+  assert.doesNotThrow(() => assertReadOnly('/* delete antigo */ select 1'));
 });
 
 test('assertReadOnly: não confunde coluna cujo nome contém palavra proibida', () => {
-  assertReadOnly('select created, updated_at from t');
-  assertReadOnly('select p.deleted_flag from people p');
+  assert.doesNotThrow(() => assertReadOnly('select created, updated_at from t'));
+  assert.doesNotThrow(() => assertReadOnly('select p.deleted_flag from people p'));
 });
 
 test('postgresRunner: recusa SQL de escrita antes de tocar o banco', async () => {

@@ -509,7 +509,7 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     // ao lado de uma rematerializada agora apareceria com a hora de agora, que é
     // exatamente o número plausível e errado que este projeto não pode cometer.
     // É a mesma conta de `manifesto.maisAntigo`, e agora com a mesma resposta.
-    dadoDe: datas.length ? datas.sort()[0]! : null,
+    dadoDe: datas.length ? datas.sort((a, b) => a.localeCompare(b))[0]! : null,
     ms: Date.now() - inicio,
   };
 }

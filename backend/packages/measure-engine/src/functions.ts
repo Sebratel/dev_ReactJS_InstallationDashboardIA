@@ -179,7 +179,7 @@ function minMax(
     return compareValues(a, b, false, nome) === sinal ? a : b;
   }
   return agregacao(args, scope, ev, nome, (vs) =>
-    vs.reduce((melhor, v) => (compareValues(v, melhor, false, nome) === sinal ? v : melhor)),
+    vs.reduce((melhor, v) => (compareValues(v, melhor, false, nome) === sinal ? v : melhor), vs[0]!),
   );
 }
 
@@ -772,7 +772,7 @@ defTable('ALL', (args, scope, ev, nome) => {
     return distintosDaColuna(n, semFiltro, ev, nome);
   }
   if (n.type === 'TableRef' || n.type === 'Identifier') {
-    const t = ev.model.table(n.type === 'TableRef' ? n.name : n.name);
+    const t = ev.model.table(n.name);
     if (!t) throw new DaxEvalError(`${nome}: '${n.name}' não é tabela do modelo.`);
     return makeTableValue(t.name, t.columns.map((c) => c.name), ev.dataset.rows(t.name));
   }
@@ -1042,7 +1042,7 @@ defTable('DATESMTD', (args, scope, ev, nome) => {
   exigeArgs(args, 1, 1, nome);
   const { ref, datas } = datasDaColuna(args[0]!, scope, ev, nome);
   if (datas.length === 0) return tabelaDeDatas(ref, []);
-  const ultima = datas.reduce((a, b) => (b.getTime() > a.getTime() ? b : a));
+  const ultima = datas.reduce((a, b) => (b.getTime() > a.getTime() ? b : a), datas[0]!);
   const inicio = Date.UTC(ultima.getUTCFullYear(), ultima.getUTCMonth(), 1);
   return tabelaDeDatas(
     ref,
@@ -1057,7 +1057,7 @@ function extremoDoMes(qual: 'inicio' | 'fim'): TableFunction {
     const { ref, datas } = datasDaColuna(args[0]!, scope, ev, nome);
     if (datas.length === 0) return tabelaDeDatas(ref, []);
     // O DAX toma o mês da ÚLTIMA data do contexto nos dois casos.
-    const ultima = datas.reduce((a, b) => (b.getTime() > a.getTime() ? b : a));
+    const ultima = datas.reduce((a, b) => (b.getTime() > a.getTime() ? b : a), datas[0]!);
     const y = ultima.getUTCFullYear();
     const m = ultima.getUTCMonth();
     const d = qual === 'inicio' ? new Date(Date.UTC(y, m, 1)) : new Date(Date.UTC(y, m + 1, 0));
@@ -1379,7 +1379,7 @@ def('ISINSCOPE', (args, scope, ev, nome) => {
 
 /** Nomes implementados. O teste de escopo compara isto com o que a base usa. */
 export function implementedFunctions(): string[] {
-  return [...new Set([...FUNCOES.keys(), ...TABELAS.keys()])].sort();
+  return [...new Set([...FUNCOES.keys(), ...TABELAS.keys()])].sort((a, b) => a.localeCompare(b));
 }
 
 export function lookupTableFunction(nome: string): TableFunction | undefined {

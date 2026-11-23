@@ -66,16 +66,23 @@ export function RankingBarra({
   const [inicio, setInicio] = useState(0);
   const [caixaRef, caixa] = useCaixa();
 
-  const d = visual.dados as DadosDeGrafico | undefined;
-  const gTudo = d && d.series && d.pontos ? montaGrafico(d) : null;
+  const dadosDoGrafico = visual.dados as DadosDeGrafico | undefined;
+  const gTudo =
+    dadosDoGrafico && dadosDoGrafico.series && dadosDoGrafico.pontos
+      ? montaGrafico(dadosDoGrafico)
+      : null;
 
   const serie = gTudo?.series[0];
   // A ORDENAÇÃO É O RANKING: mesmo valor de sempre, só a ORDEM de desenho muda — a
   // posição sai de um sort, mais barato que uma medida DAX porque o valor já está pronto.
   const ordenadas = (gTudo?.categorias ?? [])
-    .map((c, i) => ({ rotulo: c.rotulo, valores: c.valores, valor: serie?.valores[i] ?? null }))
-    .sort((a, b) => (b.valor ?? -Infinity) - (a.valor ?? -Infinity));
-  const maior = maiorValorDe([{ valores: ordenadas.map((l) => l.valor) }]);
+    .map((categoria, indice) => ({
+      rotulo: categoria.rotulo,
+      valores: categoria.valores,
+      valor: serie?.valores[indice] ?? null,
+    }))
+    .sort((primeiro, segundo) => (segundo.valor ?? -Infinity) - (primeiro.valor ?? -Infinity));
+  const maior = maiorValorDe([{ valores: ordenadas.map((linha) => linha.valor) }]);
 
   const totalLinhas = ordenadas.length;
   const alturaUtil = Math.max(0, caixa.h - MARGEM.topo - MARGEM.base);
@@ -99,13 +106,19 @@ export function RankingBarra({
         ),
       );
   const maxInicio = Math.max(0, totalLinhas - linhasPorPagina);
-  const de = Math.min(inicio, maxInicio);
-  const ate = Math.min(de + linhasPorPagina, totalLinhas);
-  const visiveis = ordenadas.slice(de, ate);
+  const deslocamento = Math.min(inicio, maxInicio);
+  const ate = Math.min(deslocamento + linhasPorPagina, totalLinhas);
+  const visiveis = ordenadas.slice(deslocamento, ate);
 
-  const clique = useCliqueNoEixo(d?.chaves ?? [], visiveis, filtros, aoFiltrar, aoPrever);
+  const clique = useCliqueNoEixo(
+    dadosDoGrafico?.chaves ?? [],
+    visiveis,
+    filtros,
+    aoFiltrar,
+    aoPrever,
+  );
 
-  if (!d || !gTudo) {
+  if (!dadosDoGrafico || !gTudo) {
     return (
       <Cartao titulo={tituloDoVisual(visual)} id={visual.id} altura="grafico">
         <MensagemDeEstado>Sem dados disponíveis para o ranking.</MensagemDeEstado>
@@ -116,10 +129,10 @@ export function RankingBarra({
   // O NOME VEM DE `d.series`, a metadata DECLARADA da medida — não de `gTudo.series` (o
   // RESULTADO calculado). Sem categoria alguma, `montaGrafico` devolve `series: []`, e o
   // card ficaria com o id cru no título bem no caso em que ele mais importa.
-  const eixo = (d.chaves ?? []).find(
-    (c) => ((c as { papel?: string }).papel ?? 'Category') === 'Category',
+  const eixo = (dadosDoGrafico.chaves ?? []).find(
+    (chave) => ((chave as { papel?: string }).papel ?? 'Category') === 'Category',
   ) as { nome?: string; coluna?: string } | undefined;
-  const nomeMedida = (d.series ?? [])[0]?.nome ?? null;
+  const nomeMedida = (dadosDoGrafico.series ?? [])[0]?.nome ?? null;
   const nomeEixo = eixo?.nome ?? eixo?.coluna;
   const titulo =
     visual.titulo?.trim() ||
@@ -127,7 +140,7 @@ export function RankingBarra({
 
   const corBarra = corNoTema(corDaSerie(nomeMedida ?? '', 0), isDark);
 
-  if (totalLinhas === 0 || ordenadas.every((l) => !l.valor)) {
+  if (totalLinhas === 0 || ordenadas.every((linha) => !linha.valor)) {
     return (
       <Cartao titulo={titulo} id={visual.id} altura="grafico">
         <MensagemDeEstado>Sem dados para os filtros atuais.</MensagemDeEstado>
@@ -146,7 +159,7 @@ export function RankingBarra({
 
   const paginador = precisaPaginar ? (
     <PaginadorDeJanela
-      de={de}
+      de={deslocamento}
       ate={ate}
       total={totalLinhas}
       maxInicio={maxInicio}
@@ -164,9 +177,9 @@ export function RankingBarra({
 
   return (
     <Cartao titulo={titulo} id={visual.id} altura="grafico" acoes={paginador}>
-      {gTudo.avisos.map((a) => (
-        <p className="aviso-grafico" key={a}>
-          {a}
+      {gTudo.avisos.map((aviso) => (
+        <p className="aviso-grafico" key={aviso}>
+          {aviso}
         </p>
       ))}
 
@@ -179,16 +192,17 @@ export function RankingBarra({
           height={alturaSvg}
           role="img"
           aria-label={
-            titulo + (precisaPaginar ? ` — posições ${de + 1} a ${ate} de ${totalLinhas}` : '')
+            titulo +
+            (precisaPaginar ? ` — posições ${deslocamento + 1} a ${ate} de ${totalLinhas}` : '')
           }
         >
-          {visiveis.map((l, j) => (
+          {visiveis.map((opcao, indice) => (
             <LinhaDoRanking
-              key={`${l.rotulo}-${de + j + 1}`}
-              rotulo={l.rotulo}
-              valor={l.valor}
-              posicao={de + j + 1}
-              y0={MARGEM.topo + j * (alturaLinha + VAO)}
+              key={`${opcao.rotulo}-${deslocamento + indice + 1}`}
+              rotulo={opcao.rotulo}
+              valor={opcao.valor}
+              posicao={deslocamento + indice + 1}
+              y0={MARGEM.topo + indice * (alturaLinha + VAO)}
               alturaLinha={alturaLinha}
               larguraTotal={larguraTotal}
               larguraDaCaixa={caixa.w}
@@ -196,11 +210,11 @@ export function RankingBarra({
               maior={maior}
               corBarra={corBarra}
               corDoRotuloDentro={corDoRotuloSobre(corBarra)}
-              tipo={d.tiposDeSerie[0] ?? null}
-              sob={clique.sob === j}
-              classe={clique.classeDa(j)}
-              aoClicar={() => clique.clica(j)}
-              aoEntrar={() => clique.aoEntrar(j)}
+              tipo={dadosDoGrafico.tiposDeSerie[0] ?? null}
+              sob={clique.sob === indice}
+              classe={clique.classeDa(indice)}
+              aoClicar={() => clique.clica(indice)}
+              aoEntrar={() => clique.aoEntrar(indice)}
               aoSair={clique.aoSair}
             />
           ))}

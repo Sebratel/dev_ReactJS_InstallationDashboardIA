@@ -50,7 +50,7 @@ export function msAteProximo(agora: Date, h: HorarioUtc): number {
 export function queriesDoDiario(grupos: Iterable<GrupoDeRefresh>): string[] {
   const todas = new Set<string>();
   for (const g of grupos) for (const q of g.queries) todas.add(q);
-  return [...todas].sort();
+  return [...todas].sort((a, b) => a.localeCompare(b));
 }
 
 /** Os argumentos do `node` do filho — os mesmos da linha do antigo crontab. */

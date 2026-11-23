@@ -3,15 +3,21 @@ import type {
   DadosDeMatriz,
   VisualCalculado,
 } from '../../services/dashboardService.ts';
-import { formata, percentualDeRazao, razaoComoPercentual } from '../../utils/formato.ts';
 import { useModo } from '../../context/ModoContext.tsx';
 import { Sparkline } from './Sparkline.tsx';
 import { Bullet } from './Bullet.tsx';
 import { Calendario } from '../ui/Calendario.tsx';
-import { comparativo } from '../../utils/comparativo.ts';
-import { cn } from '../../utils/cn.ts';
 import { IdVisual } from '../ui/IdVisual.tsx';
 import { LinhaDoKpi, MolduraDoKpi, NomeDoKpi, ValorDoKpi } from './kpi/partes.tsx';
+import { LinhaDeComparativo } from './kpi/LinhaDeComparativo.tsx';
+import {
+  dadosDoVisual,
+  ehPercentual,
+  origemDoKpi,
+  textoDoValorPrincipal,
+  valorNumerico,
+  type DadosDeKpi,
+} from './kpi/dadosDoKpi.ts';
 
 /**
  * O cartão de um indicador.
@@ -30,24 +36,17 @@ import { LinhaDoKpi, MolduraDoKpi, NomeDoKpi, ValorDoKpi } from './kpi/partes.ts
  *
  * `destaque` aumenta o corpo do cartão para o KPI principal da página.
  *
- * `tendencia` é OPCIONAL e vem de `layout.yaml` (`kpis[].tendencia`, Fase L6, §8): um
- * gráfico que JÁ está calculado na mesma página, sem requisição nova. Ausente (id não
- * declarado, ou o visual apontado ainda não chegou — ex.: fora do corte eager) o card
- * desenha exatamente como antes.
+ * **Os quatro visuais auxiliares** (`tendencia`, `meta`, `calendario`, `comparado`) vêm
+ * de `layout.yaml` (`kpis[]`, Fase L6, §8) e são visuais JÁ calculados na MESMA página —
+ * nenhuma requisição nova. Qualquer um deles ausente, com erro ou de outro tipo some
+ * sozinho (`dadosDoVisual`), e o cartão desenha exatamente como desenharia sem ele:
  *
- * `meta` é o mesmo princípio para `kpis[].meta` (Fase L6, §8): OUTRO KPI da mesma
- * página, cujo valor vira a barra "realizado × meta" do Bullet. KPI está sempre no
- * fetch eager (nunca precisa do corte de faixa que `tendencia` precisa checar).
- *
- * `calendario` segue o mesmo princípio para `kpis[].calendario` (Fase L6, §8): uma
- * MATRIZ da mesma página (técnico × dia, por exemplo), cujas linhas o `Calendario`
- * soma por coluna de data para desenhar uma grade de semana. `Calendario` recusa
- * sozinho a matriz que não estiver inteiramente carregada ou que cobrir mais de um
- * mês — nesses casos o card desenha exatamente como antes.
- *
- * `comparado` (`kpis[].comparado`) é OUTRO card da página com o valor do mesmo período
- * do ano anterior — número da API, não texto fixo. Vira a linha "▲ +6,2% vs ano
- * anterior" (`utils/comparativo.ts`). Sem valor numérico dos dois lados, não aparece.
+ * - `tendencia` — um gráfico, que vira a sparkline;
+ * - `meta` — outro KPI, cujo valor vira a barra "realizado × meta" do Bullet;
+ * - `calendario` — uma MATRIZ (técnico × dia), somada por coluna de data numa grade de
+ *   semana; o `Calendario` recusa sozinho a matriz incompleta ou de mais de um mês;
+ * - `comparado` — outro card com o mesmo período do ano anterior, que vira a linha
+ *   "▲ +6,2% vs ano anterior".
  */
 export function KpiCard({
   visual,
@@ -67,122 +66,43 @@ export function KpiCard({
   melhor?: 'maior' | 'menor';
 }) {
   const { conferencia } = useModo();
-  const d = visual.dados as
-    | {
-        nome?: string;
-        valor?: unknown;
-        tipoDoValor?: 'number' | 'string' | 'boolean' | 'date' | null;
-        /** A medida tem `%` no formato do catálogo, e `casas` são as decimais dele. */
-        percentual?: true;
-        casas?: number;
-        origem?: {
-          kind: string;
-          measure?: string;
-          table?: string;
-          column?: string;
-          aggregation?: string;
-        };
-        filtros?: string[];
-      }
-    | undefined;
+  const dados = visual.dados as DadosDeKpi | undefined;
+  if (!dados) return null;
 
-  if (!d) return null;
+  const nomeKpi = (dados.nome ?? '(sem rótulo)').toUpperCase();
+  const percentual = ehPercentual(dados, nomeKpi);
+  const valorPrincipal = textoDoValorPrincipal(dados, percentual);
+  const origem = origemDoKpi(dados);
 
-  const f = formata(d.valor, d.tipoDoValor ?? null, {
-    // `casas` sem `percentual` são as do número comum; com ele, quem escreve é
-    // `razaoComoPercentual` logo abaixo.
-    casas: d.percentual ? null : (d.casas ?? null),
-  });
-  const nomeKpi = (d.nome ?? '(sem rótulo)').toUpperCase();
-  const origem =
-    d.origem?.measure ??
-    (d.origem?.column ? `${d.origem?.aggregation ?? ''} ${d.origem.column}`.trim() : null);
-
-  // KPI de porcentagem. A medida devolve RAZÃO (0,064) e o Power BI mostra "6,40%".
-  //
-  // Quem decide é o `format` da medida, que a API manda em `percentual`/`casas` desde
-  // 16/11/2026 (QA D-12). Até então a tela decidia pelo RÓTULO, e `MÉDIA GERAL` — que é
-  // `REINCIDÊNCIA[Porcentagem]`, formato `0.00%` — saía como `0,064`: o nome dela não
-  // tem `%` nenhum. O rótulo fica como reserva, para resposta de API mais velha que a
-  // tela (`percentual` ausente).
-  const porFormato = d.percentual === true;
-  const ehPercentual = (porFormato || nomeKpi.includes('%')) && d.tipoDoValor === 'number';
-  // Com o formato na mão não há palpite de escala: `razaoComoPercentual` sempre
-  // multiplica por 100, e as casas são as que o formato pede.
-  const comoPercentual = (v: unknown): string =>
-    porFormato ? razaoComoPercentual(v, d.casas) : percentualDeRazao(v);
-  const valorTexto = f.vazio ? '—' : ehPercentual ? comoPercentual(d.valor) : f.texto;
-
-  const dadosDaTendencia =
-    tendencia && !tendencia.erro && tendencia.conteudo === 'grafico'
-      ? (tendencia.dados as DadosDeGrafico | undefined)
-      : undefined;
-
-  const dadosDaMeta =
-    meta && !meta.erro && meta.conteudo === 'card'
-      ? (meta.dados as
-          | { valor?: unknown; tipoDoValor?: 'number' | 'string' | 'boolean' | 'date' | null }
-          | undefined)
-      : undefined;
-  const metaValor =
-    dadosDaMeta?.tipoDoValor === 'number' && typeof dadosDaMeta.valor === 'number'
-      ? dadosDaMeta.valor
-      : undefined;
-  const valorNumerico =
-    d.tipoDoValor === 'number' && typeof d.valor === 'number' ? d.valor : undefined;
-
-  const dadosDoComparado =
-    comparado && !comparado.erro && comparado.conteudo === 'card'
-      ? (comparado.dados as { valor?: unknown; tipoDoValor?: string | null } | undefined)
-      : undefined;
-  const valorAnterior =
-    dadosDoComparado?.tipoDoValor === 'number' && typeof dadosDoComparado.valor === 'number'
-      ? dadosDoComparado.valor
-      : undefined;
-  const variacao =
-    valorNumerico !== undefined && valorAnterior !== undefined
-      ? comparativo(valorNumerico, valorAnterior, { percentual: ehPercentual, melhor })
-      : null;
-  const textoAnterior =
-    valorAnterior === undefined
-      ? ''
-      : ehPercentual
-        ? comoPercentual(valorAnterior)
-        : formata(valorAnterior, 'number').texto;
-
-  const dadosDoCalendario =
-    calendario && !calendario.erro && calendario.conteudo === 'matriz'
-      ? (calendario.dados as DadosDeMatriz | undefined)
-      : undefined;
+  const dadosDaTendencia = dadosDoVisual<DadosDeGrafico>(tendencia, 'grafico');
+  const dadosDoCalendario = dadosDoVisual<DadosDeMatriz>(calendario, 'matriz');
+  const valorDaMeta = valorNumerico(dadosDoVisual<DadosDeKpi>(meta, 'card'));
+  const valorDoAnoAnterior = valorNumerico(dadosDoVisual<DadosDeKpi>(comparado, 'card'));
+  const valorAtual = valorNumerico(dados);
 
   return (
     <MolduraDoKpi>
-      <ValorDoKpi vazio={f.vazio} destaque={destaque}>
-        {valorTexto}
+      <ValorDoKpi vazio={valorPrincipal.vazio} destaque={destaque}>
+        {valorPrincipal.texto}
       </ValorDoKpi>
       <NomeDoKpi title={nomeKpi}>{nomeKpi}</NomeDoKpi>
+
       {dadosDaTendencia ? <Sparkline dados={dadosDaTendencia} /> : null}
-      {metaValor !== undefined && valorNumerico !== undefined ? (
-        <Bullet valor={valorNumerico} meta={metaValor} />
+
+      {valorDaMeta !== undefined && valorAtual !== undefined ? (
+        <Bullet valor={valorAtual} meta={valorDaMeta} />
       ) : null}
+
       {dadosDoCalendario ? <Calendario dados={dadosDoCalendario} /> : null}
-      {variacao ? (
-        <div
-          title={`Mesmo período (1º/jan até hoje) do ano anterior: ${textoAnterior}`}
-          className="mt-[2px] truncate text-[10.5px] leading-[1.35] text-pbi-muted tabular-nums"
-        >
-          <span
-            className={cn(
-              'font-bold',
-              variacao.tom === 'bom' && 'text-pbi-green-texto',
-              variacao.tom === 'ruim' && 'text-pbi-critico-texto',
-            )}
-          >
-            {variacao.seta} {variacao.texto}
-          </span>{' '}
-          vs ano anterior ({textoAnterior})
-        </div>
-      ) : null}
+
+      <LinhaDeComparativo
+        valorAtual={valorAtual}
+        valorAnterior={valorDoAnoAnterior}
+        dados={dados}
+        percentual={percentual}
+        melhor={melhor}
+      />
+
       {conferencia && origem ? (
         <LinhaDoKpi title={`${origem} · ${visual.id}`}>
           {origem} · <IdVisual id={visual.id} />

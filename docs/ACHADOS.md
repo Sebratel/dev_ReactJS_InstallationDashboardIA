@@ -17458,3 +17458,278 @@ Três decisões que não são óbvias, e o porquê:
 as 14 abas a 1366px: início → só a seta direita; um clique → rola 1.024px e sobra só a
 esquerda; de volta ao começo; a 2400px nenhuma seta. Console limpo, sem rolagem
 horizontal de página, contraste do ícone 5,7:1 no claro e 7:1 no escuro.
+
+## #272 — o alerta de memória era uma chave de projeção religada por engano, e custava 520 MB de pico (19/11)
+
+Veio um alerta do vigia de infra do n8n: `api` em 80% do `mem_limit` (2,4 de 3,0 GiB).
+A causa provável que ele sugeria era o cache de visual estourando o teto — e estava
+errada nos dois sentidos, o que vale registrar porque o erro é convidativo.
+
+**Primeiro: um cache que RECUSA não ocupa memória.** `CacheDeVisual.guarda` com
+`bytes > teto` chama `aoRecusar`, apaga a chave e volta (`cache-visual.ts`). A entrada de
+83,5 MB que o alerta citava nunca entrou em lugar nenhum. Ela custa CPU e clique lento —
+não RAM. Perseguir aquela linha de log teria consumido a investigação inteira no lugar
+errado.
+
+**Segundo: o "teto de 64 MB" não é o do código.** `TETO_PADRAO_MB` é 512; o que vale em
+produção é `CACHE_VISUAL_MB: '128'` do compose dividido por `API_WORKERS: 2`
+(`configuracaoDaPiscina`, `piscina-workers.ts`). 128 ÷ 2 = 64 por worker.
+
+### O que estava acontecendo de verdade
+
+`npm run probe:peso-memoria` sobre o snapshot de 17/11 deu `visao-geral` em 117,08 MB.
+O #263, em 16/11, tinha medido 46,32 MB. A spec da página não é tocada desde 15/10 — o
+que mudou foi a projeção:
+
+```
+  backend/specs/_catalog/projecao.yaml, FIELD AGENDA
+  completa_no_snapshot: false  ->  true     (commit cd63c7b, 17/11)
+```
+
+Com `true`, `queryDaCarga` para de trocar a tabela pelo grão reduzido, e **toda** página
+que toca a FIELD AGENDA passa a carregar a query completa:
+
+```
+  field-agenda-slot    40.632 linhas, 19 col ->   9,13 MB
+  field-agenda        595.854 linhas, 26 col ->  87,58 MB   (50,26 só de `relato`)
+```
+
+Medido virando só a chave, mesmo snapshot:
+
+```
+                       true        false
+  visao-geral        117,08 MB    48,20 MB
+  agendamento-field  108,63 MB    38,12 MB
+  relatorio-do-mes   101,27 MB    31,xx MB
+```
+
+Três páginas, ~70 MB cada, em datasets que moram FORA do heap e de que há até 4 vivos ao
+mesmo tempo (`TETO_CACHE_POR_WORKER` 2 × 2 workers).
+
+### Por que nenhum teste pegou
+
+`completa-no-snapshot.test.ts` cobra que a chave e o `refresh.yaml` andem juntos — e o
+commit mudou **os dois**, então passou verde. Ele garante coerência interna; **nada no
+projeto cobrava o custo de memória da chave**. Pior: três testes tinham sido ajustados
+para AFIRMAR o estado `true` (`queries-que-alimentam.test.ts` lendo a spec real,
+`diario.test.ts` com `assert.ok(queries.includes('field-agenda'))` contradizendo o
+comentário logo acima, e `servidor.test.ts` usando a `field-agenda` como exemplo de query
+do grupo `frio`). Os três prendiam o teste ao VALOR vigente em vez de ao comportamento;
+os três foram refeitos para simular os dois ramos ou usar uma query que não troca de
+grupo com a chave.
+
+E o comentário de 8 linhas logo acima da chave — que explica por que ela é `false` desde
+26/10 — não foi atualizado, e ficou mentindo por dois dias.
+
+### A régua que faltava: `probe:carga-usuarios`
+
+Havia `probe:memoria-api` (bisseção do teto, uma página por vez, processo frio: a régua
+do CONTRATO), e não havia régua do PICO — "com o contrato fixo, até onde o RSS sobe com
+200 pessoas USANDO o dash". Agora há. Cada usuário faz uma volta de trabalho de verdade:
+abre a página, abre uma segmentação, marca um valor e refiltra, pagina, pesquisa e
+ordena; na volta seguinte troca de página.
+
+**Duas armadilhas que a primeira versão dela caiu, e que valem para quem escrever a
+próxima sonda de carga.** (1) `?ordem=` espera o ÍNDICE da coluna, não o nome
+(`/^(\d{1,3}):(asc|desc)$/`); mandar o nome devolve 400, e as falhas parecem defeito da
+rota. (2) `LIMITE_API_POR_MINUTO` é **300 por IP**: 200 usuários saindo todos de
+127.0.0.1 devolveram 1.800 de 2.100 passos em HTTP 429 e um RSS que não queria dizer
+nada. A sonda passou a subir a API com `CONFIA_PROXY=1` e a mandar `X-Real-IP` por
+usuário — que é exatamente o que o nginx faz em produção (compose, `CONFIA_PROXY: '1'`;
+`ipDoPedido` lê `x-real-ip`).
+
+### O número, com 200 usuários trabalhando
+
+Mesma máquina, mesmo snapshot, só a chave mudando:
+
+```
+                     true (como estava)   false (consertado)
+  RSS pico             1.926 MB             1.406 MB      -520 MB
+  RSS mediano          1.394 MB             1.152 MB
+  latência p50        13.178 ms            7.309 ms       -45%
+  latência p95        30.412 ms           24.194 ms
+  % do mem_limit          63%                  46%
+```
+
+`1.926 + 1.024` (o filho da busca ao vivo, que desde o #255 sempre existe) `= 2.950` de
+3.072 MB: 96% do teto, com 4% de folga. É isso que o alerta estava vendo. Com a chave
+consertada a mesma conta dá 2.430 MB, 79%.
+
+A recusa de cache da `agendamento-field` (98,8 MB) sumiu junto. A da `visao-geral`
+**continua**: 104,4 MB no visual `704b7bcb68fd3e17cd30` — a tabela "INFORMAÇÕES GERAIS
+DOS PROTOCOLOS", 24 colunas × 104.068 linhas, com CLIENTE, TELEFONE, RUA e BAIRRO. Ela
+nunca cabe em 64 MB, nunca cacheia, e é a razão de `pagina` ter p50 de 19,3 s mesmo
+depois do conserto. É a próxima frente, e é de velocidade e de exposição de dado pessoal
+(regra 2), não de memória.
+
+### O custo que o conserto tem, e que precisa de decisão
+
+A chave não voltou de graça. O comentário que o commit deixou em `servidor.test.ts` dizia
+que a `field-agenda` tinha voltado ao `frio` "para atender histórico completo sem filtro
+na Agendamento Field". Com `completa_no_snapshot: false`, um pedido da Agendamento Field
+**sem período reconhecível** cai no snapshot, e lá os visuais de relato voltam
+indisponíveis (passo 3b de DECISAO-AO-VIVO.md). Com período — o caminho normal da tela —
+a página vem do SRD e tem a agenda inteira. Se o histórico completo sem filtro for
+requisito, o caminho não é religar a chave (520 MB em três páginas, para sempre): é
+servir aquele caso pelo SRD também.
+
+### Também achado, e sem conserto ainda
+
+`LIMITE_API_POR_MINUTO` é 300 por IP, e a API só enxerga o IP de cada pessoa porque o
+compose põe `CONFIA_PROXY: '1'` e o nginx manda `X-Real-IP`. Não há teste que prove que
+esse cabeçalho chega. Se ele parar de chegar, `ipDoPedido` cai no `socket.remoteAddress`
+— o IP do nginx — e **todos os usuários passam a dividir uma cota de 300/min**: com 200
+pessoas, 1,5 pedido por pessoa por minuto antes do 429. Falha fechada e plausível, que é
+a classe cara.
+
+Verde: `npm test` (2.558 back + 285 tela) e `typecheck`.
+
+---
+
+## #273 — a agregação no SRD vale, mas dois filtros e o eixo de tempo decidem quanto (23/11)
+
+O Erick perguntou se as queries de hoje já são agregadas, "deixando o peso para o SRD".
+Não são: **2 de 28** têm `GROUP BY` de verdade (`relatos-do-dia`, 37.153 linhas, e
+`valores-do-relato`, 67), e as duas nasceram do passo 3 do ao vivo em 26/10, não de uma
+estratégia de memória. As outras 26 entregam linha — 1.568.424 delas. O SRD **recorta**
+(a `protocolos-geral` filtra 14 tipos de protocolo e `a.created >= '2025-01-01'`), mas
+não agrega. Quem agrega é a API, em memória, pela engine DAX. Daí a pergunta seguinte:
+quanto custaria empurrar isso para o banco.
+
+### Primeiro, onde a RAM está de verdade
+
+Medido em 23/11 com a API ociosa no ar: **81 MB de RSS**. Os datasets por página, pela
+`probe:peso-memoria`: a mais pesada é a `premiacao-instalacao` com 50,56 MB, a mais leve
+com dado é a `relatorio-do-ano` com 30,30 MB. Com `API_DATASETS_POR_WORKER: '1'` e duas
+workers, no máximo ~100 MB vivos.
+
+Contra o pico de 1.406 MB da `probe:carga-usuarios` (#272), o instantâneo se decompõe em
+heap das workers 580 MB, heap do pai 159 MB (1.107 respostas em cache), cache de visual
+97 MB, externo/datasets 120 MB, e ~450 MB que o RSS tem a mais que heap + external
+somados (reserva não devolvida, fragmentação, V8, buffers do `.gz`) — esta última parcela
+é diferença, não medida isolada. **O dado guardado é a menor parcela.** O caro é
+calcular sobre ele: a tabela `704b7bcb68fd3e17cd30` produz uma resposta de 104,4 MB num
+clique, o dobro do dataset inteiro da página.
+
+### O custo da agregação no banco: menor que o de hoje, não maior
+
+Réplica somente leitura, `statement_timeout` de 300 s, cada tempo repetido e com a ordem
+invertida para não medir só cache quente:
+
+```
+                                tempo        linhas   bytes na rede
+  protocolos-geral completa   50,3–116 s    109.407      104,35 MB
+  agregado por CIDADE         20,2–29,2 s        28         0,8 KB
+  agregado por EQUIPE              15,0 s        40         1,6 KB
+  um card (COUNT)                  14,4 s         1            ~0
+```
+
+O `EXPLAIN (ANALYZE)` diz o contrário do palpite: **o `GROUP BY` custa MAIS CPU no
+banco** — 37,6 s de execução contra 14,3 s da completa — e mesmo assim termina antes. O
+gargalo nunca foi agregar; é materializar e empurrar 104 MB. Consequência de projeto: o
+lugar da agregada é o **refresh** (a cada 15 min), nunca o clique. Agregar ao vivo por
+clique daria 20 s por clique.
+
+### O número que decide: dois slicers anulam a agregação inteira
+
+Cardinalidade do grão de filtros da `visao-geral`, medida no banco:
+
+```
+  grão COMPLETO (os 8 filtros da página)    109.409 linhas   ← 2 A MAIS que o original
+  sem CLIENTE e sem N°PROTOCOLO               2.509 linhas   ← 44x menor
+  sem N°PROTOCOLO, mantendo CLIENTE         104.990 linhas   ← praticamente nada
+  só as 3 dimensões dos gráficos                396 linhas   ← 276x menor
+```
+
+`CLIENTE` e `N°PROTOCOLO` são slicers, e sozinhos destroem toda a compressão. Faz
+sentido: não são dimensão de análise, são **busca pontual**. Busca pontual não quer
+tabela carregada, quer `WHERE` no banco. Qualquer plano de pré-agregação que tente
+preservá-los no grão entrega uma tabela do mesmo tamanho — e o teste é barato, basta
+contar o `GROUP BY` antes de escrever qualquer SQL.
+
+### E o eixo de tempo decide o resto
+
+As medidas agregam por `DATA INSTALAÇÃO` (`paridade-janela.yaml`), então a agregada
+precisa de data no grão, ou não dá para filtrar período:
+
+```
+  6 dimensões analíticas, SEM data     2.509 linhas    44x menor
+  6 dimensões + MÊS                    6.859 linhas    16x menor
+  6 dimensões + DIA                   31.462 linhas     3x menor
+```
+
+Grão diário quase mata o ganho. A decisão "mês ou dia" vale 4,6x de memória e é de
+produto, não de engenharia.
+
+### O trabalho escondido: a coluna do eixo não existe no SQL
+
+O SQL da `protocolos-geral` devolve **34 colunas**; a tabela em memória tem 62. Das 11
+dimensões que a `visao-geral` usa, 8 existem no SQL e 3 não:
+
+- `STATUS PROTOCOLO` = `IF(DATA INSTALAÇÃO <> BLANK(), "Instalado", "Não Instalado")` —
+  portável para `CASE WHEN`, desde que `DATA INSTALAÇÃO` exista.
+- `TÉCNICO 1` e `TÉCNICO 2` vêm de um merge com `gestores-equipes`, que é **dbMaria**.
+  Join entre bancos: não dá para fazer no SRD.
+
+E `DATA INSTALAÇÃO`, que é o eixo de todas as medidas, é calculada sobre
+`DATA ALOCAÇÃO`, `DATA DA TROCA`, `DATA AGENDA`, `TIPO DE PROTOCOLO` e `EQUIPE` — e as
+duas primeiras **não estão no SQL**: nascem de merges com `alocacao-patrimonio` e
+`troca-endereco`. As duas são `dsn=dbVoalle`, ou seja, dá para trazê-las para o mesmo
+SQL; só a `gestores-equipes` fica fora.
+
+**Resumo do custo real:** não é o banco (ele fica mais rápido). É portar três merges para
+SQL com prova de paridade, e mudar dois slicers de "filtro sobre tabela carregada" para
+"busca". Isso é decisão do Erick, não refactor silencioso.
+
+### O que isto NÃO resolve
+
+A `INFORMAÇÕES GERAIS DOS PROTOCOLOS` não é agregável — ela quer 24 colunas × 109 mil
+linhas, e é a resposta de 104,4 MB que nunca cabe no teto de 64 MB. Enquanto ela
+existir como está, o ganho da agregada fica anulado nessa página. O conserto dela é
+paginar no banco, e é também assunto de exposição de dado pessoal (regra 2): ela carrega
+CLIENTE, TELEFONE, RUA e BAIRRO.
+
+Medições em `backend/tools/probe/src/agregada-srd.ts`; o recorte proposto, com o que
+cada decisão trava, em `docs/RECORTE-AGREGADA-SRD.md`.
+
+## #274 — a régua de complexidade do frontend é o SonarJS no `npm run lint` (23/11)
+
+PR reprovado por complexidade. Em vez de subir um SonarQube (servidor Java, ~3 GB de RAM,
+scanner no CI), entrou o **`eslint-plugin-sonarjs`** — o MESMO analisador do SonarLint,
+dentro do `eslint.config.js` que o CI já roda. O que ele acusa aqui é o que apareceria
+num gate do Sonar.
+
+**Primeira medição: 101 problemas**, 18 deles de complexidade cognitiva acima de 15.
+Os piores: `DashboardPage` (63), `GestaoDeAcessos` (36), `KpiCard` (35).
+
+**Três eram risco real, não estilo** (`sonarjs/super-linear-regex` — ReDoS, regex com
+backtracking exponencial sobre entrada que vem de fora):
+
+- `utils/rota.ts`: `/^\/+|\/+$/g` sobre o `pathname` da URL;
+- `utils/ordemDasTelas.ts`: o `replace` de "espaços, barra, espaços" sobre o nome da aba;
+- `components/acessos/PerfisDeAcesso.tsx`: `/^-+|-+$/g` sobre o nome digitado do perfil.
+
+Os três viraram varredura linear. As outras cinco ocorrências ficaram em arquivo de
+teste, onde a entrada é a que o próprio teste escreve — e por isso a regra está
+desligada só em `test/**`.
+
+**Sete `sonarjs/todo-tag` eram falso positivo**: a regra marca a palavra PORTUGUESA
+"todo"/"TODO" ("TODO filtro da página", "todo render") como marcador de tarefa. Como a
+regra 6 do `CLAUDE.md` manda escrever em português, a regra ficou desligada, com o
+motivo no `eslint.config.js`.
+
+**Os dois maiores arquivos do frontend viraram pastas**, por laço aninhado e por tamanho:
+
+```
+Previsoes.tsx   933 linhas  →   55 + 8 arquivos (maior: 248)
+Operacao.tsx    818 linhas  →   64 + 10 arquivos (maior: 202)
+```
+
+O laço aninhado mais caro era o mapa de calor da Operação: para cada dia da semana ele
+varria a lista inteira de células (`dias.map(… calor.filter(…))`). Virou um agrupamento
+só, em `operacao/dados.ts`. A régua agora inclui `max-depth: 3` e `max-nested-callbacks:
+3` para não voltar.
+
+**Estado final: zero.** `npm run lint` passa limpo, com 2.561 testes de backend e 285 de
+frontend verdes. Quem exceder 15 de complexidade cognitiva, aninhar laço ou repetir uma
+regex de backtracking daqui para frente reprova no CI sozinho, sem depender de revisão.

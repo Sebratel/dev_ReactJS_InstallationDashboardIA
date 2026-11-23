@@ -95,7 +95,7 @@ const TETO_DE_BUSCAS_WEB = 200;
 
 /** Duas requisições são a mesma quando URL e headers batem. */
 function chaveDoPedido(p: PedidoWeb): string {
-  const hs = Object.keys(p.headers).sort().map((k) => `${k}: ${p.headers[k]}`).join('\n');
+  const hs = Object.keys(p.headers).sort((a, b) => a.localeCompare(b)).map((k) => `${k}: ${p.headers[k]}`).join('\n');
   return `GET ${p.url}\n${hs}`;
 }
 
@@ -238,7 +238,7 @@ export function queryDependencies(
     }
   };
   anda(parseM(m), passos);
-  return { dependencias: [...dependencias].sort(), orfaos: [...orfaos].sort() };
+  return { dependencias: [...dependencias].sort((a, b) => a.localeCompare(b)), orfaos: [...orfaos].sort((a, b) => a.localeCompare(b)) };
 }
 
 /**

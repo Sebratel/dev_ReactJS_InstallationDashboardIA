@@ -179,9 +179,9 @@ export function chaveDeCarga(
 ): string {
   return [
     dashId,
-    [...visuaisIds].sort().join(','),
-    [...libera].sort().join(','),
-    [...formaCompleta].sort().join(','),
+    [...visuaisIds].sort((a, b) => a.localeCompare(b)).join(','),
+    [...libera].sort((a, b) => a.localeCompare(b)).join(','),
+    [...formaCompleta].sort((a, b) => a.localeCompare(b)).join(','),
   ].join(' ');
 }
 
@@ -632,7 +632,7 @@ if (parentPort) {
         // é uma linha por carga tentada, não por pedido que esperou por ela.
         await promessa.then(
           () => {
-            carga = { ms: Date.now() - t0, libera: [...libera].sort(), formaCompleta: [...formaCompleta].sort(), worker: threadId };
+            carga = { ms: Date.now() - t0, libera: [...libera].sort((a, b) => a.localeCompare(b)), formaCompleta: [...formaCompleta].sort((a, b) => a.localeCompare(b)), worker: threadId };
           },
           (err: unknown) => {
             const linha = linhaDeRecusaPorRecongelamento(

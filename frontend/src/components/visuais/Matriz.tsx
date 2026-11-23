@@ -37,14 +37,14 @@ import { MensagemDeEstado } from '../ui/Estado.tsx';
 const COLUNAS_POR_JANELA = 30;
 
 /** Dá para transpor: tudo carregado, eixo de coluna de verdade, muitas colunas e poucas linhas. */
-const podeTransporA = (d: DadosDeMatriz | undefined): boolean =>
-  !!d &&
-  !!d.colunas &&
-  !!d.linhas &&
-  !semEixoDeColuna(d) &&
-  d.linhas.length === d.linhasTotais &&
-  d.colunas.length > 8 &&
-  d.linhas.length <= 60;
+const podeTransporA = (matriz: DadosDeMatriz | undefined): boolean =>
+  !!matriz &&
+  !!matriz.colunas &&
+  !!matriz.linhas &&
+  !semEixoDeColuna(matriz) &&
+  matriz.linhas.length === matriz.linhasTotais &&
+  matriz.colunas.length > 8 &&
+  matriz.linhas.length <= 60;
 
 export function Matriz(props: {
   pagina: string;
@@ -54,15 +54,15 @@ export function Matriz(props: {
 }) {
   const janela = useJanela(props.pagina, props.visual, props.filtros, '', null, props.clicados);
   const visual = janela.visual;
-  const d = visual.dados as DadosDeMatriz | undefined;
-  const temDados = !!d && !!d.colunas && !!d.linhas;
+  const matriz = visual.dados as DadosDeMatriz | undefined;
+  const temDados = !!matriz && !!matriz.colunas && !!matriz.linhas;
 
   // TODOS os hooks antes do `return` de "sem dados" (fase 4): estavam depois dele.
-  const podeTranspor = podeTransporA(d);
+  const podeTranspor = podeTransporA(matriz);
   const [transposto, setTransposto] = useState(
-    podeTranspor && d!.colunas.length > d!.linhas.length * 2,
+    podeTranspor && matriz!.colunas.length > matriz!.linhas.length * 2,
   );
-  const escalas = useMemo(() => (temDados ? escalasPorMedida(d!) : []), [temDados, d]);
+  const escalas = useMemo(() => (temDados ? escalasPorMedida(matriz!) : []), [temDados, matriz]);
   // Com setter: sem ele a janela ficava presa na última página. `null` = ainda no padrão,
   // então ela acompanha o fim quando um filtro muda o tamanho da matriz.
   const [inicioColuna, setInicioColuna] = useState<number | null>(null);
@@ -73,49 +73,56 @@ export function Matriz(props: {
   } | null>(null);
   const [erroDaExportacao, setErroDaExportacao] = useState<string | null>(null);
 
-  if (!d || !d.colunas || !d.linhas) {
+  if (!matriz || !matriz.colunas || !matriz.linhas) {
     return (
-      <Cartao titulo={tituloDeMatriz(visual, d)} id={visual.id} altura="matriz">
+      <Cartao titulo={tituloDeMatriz(visual, matriz)} id={visual.id} altura="matriz">
         <MensagemDeEstado>Sem dados disponíveis para a matriz.</MensagemDeEstado>
       </Cartao>
     );
   }
 
-  const totalColunas = (transposto ? d.linhas : d.colunas).length;
+  const totalColunas = (transposto ? matriz.linhas : matriz.colunas).length;
   const maxInicioColuna = Math.max(0, totalColunas - COLUNAS_POR_JANELA);
   const deColuna = Math.min(inicioColuna ?? maxInicioColuna, maxInicioColuna);
   const ateColuna = Math.min(deColuna + COLUNAS_POR_JANELA, totalColunas);
   const paginaColunas = totalColunas > COLUNAS_POR_JANELA;
 
-  const partes = [`${inteiro(d.linhasTotais)} × ${inteiro(d.colunas.length)}`];
+  const partes = [`${inteiro(matriz.linhasTotais)} × ${inteiro(matriz.colunas.length)}`];
   if (paginaColunas)
     partes.push(
       `colunas ${inteiro(deColuna + 1)}–${inteiro(ateColuna)} de ${inteiro(totalColunas)}`,
     );
-  if (d.descartadas.linhas || d.descartadas.colunas) {
-    partes.push(`${d.descartadas.linhas + d.descartadas.colunas} posição(ões) vazia(s) podada(s)`);
+  if (matriz.descartadas.linhas || matriz.descartadas.colunas) {
+    partes.push(
+      `${matriz.descartadas.linhas + matriz.descartadas.colunas} posição(ões) vazia(s) podada(s)`,
+    );
   }
   // A ressalva vem da API (`nota`) e não é cosmética: este visual ignora o mês do seletor
   // de propósito, e sem dizer isso pareceria discordar dos vizinhos sem motivo.
   if (visual.nota) partes.push(visual.nota);
   if (transposto) partes.push('transposta');
 
-  const nomeChavesLinha = d.chavesDeLinha.map((c) => c.nome ?? c.coluna).join(' / ');
-  const nomeChavesColuna = d.chavesDeColuna.map((c) => c.nome ?? c.coluna).join(' / ') || 'Coluna';
-  const corpo = corpoDaMatriz(d, transposto, deColuna, ateColuna, escalas);
+  const nomeChavesLinha = matriz.chavesDeLinha
+    .map((chaveDeLinha) => chaveDeLinha.nome ?? chaveDeLinha.coluna)
+    .join(' / ');
+  const nomeChavesColuna =
+    matriz.chavesDeColuna
+      .map((chaveDeColuna) => chaveDeColuna.nome ?? chaveDeColuna.coluna)
+      .join(' / ') || 'Coluna';
+  const corpo = corpoDaMatriz(matriz, transposto, deColuna, ateColuna, escalas);
 
   const exportarCSV = async () => {
     if (exportando) return;
     setExportando(true);
     setErroDaExportacao(null);
-    setProgressoDaExportacao({ baixadas: 0, total: d.linhasTotais });
+    setProgressoDaExportacao({ baixadas: 0, total: matriz.linhasTotais });
     try {
       // Matriz que já veio inteira numa janela só: as linhas e células já estão no
       // navegador. Exportar delas é instantâneo e não recalcula a query — ver o mesmo
       // conserto em `Tabela.tsx`. Só vale quando a janela começa em 0 e cobre o total.
-      const jaInteira = d.de === 0 && d.linhas.length >= d.linhasTotais;
+      const jaInteira = matriz.de === 0 && matriz.linhas.length >= matriz.linhasTotais;
       const completa = jaInteira
-        ? d
+        ? matriz
         : await coletaMatrizCompleta({
             pagina: props.pagina,
             visual: props.visual.id,
@@ -140,7 +147,7 @@ export function Matriz(props: {
     // o numero de linhas — medido em 27/08/2026 na AGENDAMENTO FIELD, cartoes de 2.386px
     // e 2.123px. Rolagem contida pode; cartao maior que a tela nao.
     <Cartao
-      titulo={tituloDeMatriz(visual, d)}
+      titulo={tituloDeMatriz(visual, matriz)}
       sub={partes.join(' · ')}
       id={visual.id}
       largo
@@ -169,7 +176,7 @@ export function Matriz(props: {
           )}
           {podeTranspor && (
             <button
-              onClick={() => setTransposto((t) => !t)}
+              onClick={() => setTransposto((tela) => !tela)}
               title="Alterna linhas e colunas — útil quando há muitas colunas"
             >
               <Transpor /> {transposto ? 'Desfazer transposição' : 'Transpor'}
@@ -195,20 +202,22 @@ export function Matriz(props: {
           <thead>
             <tr>
               <th>{transposto ? nomeChavesColuna : nomeChavesLinha}</th>
-              {cabecalhosDaDireita(d, transposto, deColuna, ateColuna).map((h, i) => (
-                <th key={i} className="num">
-                  {h}
-                </th>
-              ))}
+              {cabecalhosDaDireita(matriz, transposto, deColuna, ateColuna).map(
+                (altura, indice) => (
+                  <th key={indice} className="num">
+                    {altura}
+                  </th>
+                ),
+              )}
             </tr>
           </thead>
           <tbody>
-            {corpo.map((linha, i) => (
-              <tr key={i}>
+            {corpo.map((linha, posicao) => (
+              <tr key={posicao}>
                 <td>{linha.rotulo}</td>
-                {linha.celulas.map((cel, j) => (
+                {linha.celulas.map((cel, indice) => (
                   <td
-                    key={j}
+                    key={indice}
                     className={`num${cel.vazio ? ' sem' : ''}${cel.largura !== undefined ? ' barra-dado' : ''}`}
                   >
                     {cel.largura !== undefined ? (
@@ -224,7 +233,7 @@ export function Matriz(props: {
       </div>
       {!transposto && (
         <Paginacao
-          janela={{ de: d.de, mostradas: d.linhas.length, total: d.linhasTotais }}
+          janela={{ de: matriz.de, mostradas: matriz.linhas.length, total: matriz.linhasTotais }}
           carregando={janela.carregando}
           vaiPara={janela.vaiPara}
         />

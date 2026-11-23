@@ -82,7 +82,10 @@ test('o heap autorizado pelos padrões cabe dentro do mem_limit do container', (
   // morto pelo OOM killer do host — falha que aparece como "a página às vezes
   // não abre", não como erro de configuração. Este teste falha antes.
   const c = configuracaoDaPiscina(PERFIL_DE_PRODUCAO, 16);
-  const maiorFilhoMB = Math.max(heapDoFilhoMB('agenda'), heapDoFilhoMB('ano'), heapDoFilhoMB('janela'));
+  const aoVivoNoRefresh = COMPOSE_API.environment.AO_VIVO_VIA_REFRESH === '1';
+  const maiorFilhoMB = aoVivoNoRefresh
+    ? 0
+    : Math.max(heapDoFilhoMB('agenda'), heapDoFilhoMB('ano'), heapDoFilhoMB('janela'));
   const totalAutorizadoMB = TETO_PAI_MB + c.tamanhoPool * c.heapPorWorkerMB + maiorFilhoMB;
 
   assert.ok(
@@ -110,7 +113,8 @@ test('o perfil de produção mantém o teto do processo pai e da piscina', () =>
   assert.equal(TETO_PAI_MB, 768);
   // Duas, não uma: com uma worker só a piscina não reserva nenhuma para o clique.
   assert.deepEqual(PERFIL_DE_PRODUCAO, { API_WORKERS: '2', API_WORKER_HEAP_MB: '512' });
-  assert.equal(MEM_LIMIT_CONTAINER_MB, 3072);
+  assert.equal(MEM_LIMIT_CONTAINER_MB, 2048);
+  assert.equal(COMPOSE_API.environment.AO_VIVO_VIA_REFRESH, '1');
 });
 
 test('API_WORKERS e API_WORKER_HEAP_MB sobrepõem os padrões', () => {

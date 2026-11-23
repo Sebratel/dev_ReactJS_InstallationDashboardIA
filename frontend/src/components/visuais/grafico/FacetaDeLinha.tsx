@@ -23,24 +23,35 @@ export function FacetaDeLinha({
   const teto = maiorValorDe(series, 1);
   const marcas = marcasDoEixo(teto, 2);
   const topo = Math.max(...marcas, 1);
-  const y = (v: number) => topoDoPainel + altura * (1 - v / topo);
+  const posY = (valor: number) => topoDoPainel + altura * (1 - valor / topo);
 
   return (
     <g>
-      {marcas.map((m) => (
-        <g key={m}>
-          <line className="grade" x1={esquerda} x2={direita} y1={y(m)} y2={y(m)} />
-          <text className="tick" x={esquerda - 8} y={y(m) + 3.5} textAnchor="end">
-            {inteiro(m)}
+      {marcas.map((medida) => (
+        <g key={medida}>
+          <line className="grade" x1={esquerda} x2={direita} y1={posY(medida)} y2={posY(medida)} />
+          <text className="tick" x={esquerda - 8} y={posY(medida) + 3.5} textAnchor="end">
+            {inteiro(medida)}
           </text>
         </g>
       ))}
-      {series.map((s) => (
-        <g key={s.chave}>
-          <path className="linha-serie" d={caminhoDaSerie(s.valores, xMeio, y)} stroke={s.cor} />
-          {s.valores.map((v, i) =>
-            v === null ? null : (
-              <circle key={i} className="ponto-serie" cx={xMeio(i)} cy={y(v)} r={4} fill={s.cor} />
+      {series.map((serie) => (
+        <g key={serie.chave}>
+          <path
+            className="linha-serie"
+            d={caminhoDaSerie(serie.valores, xMeio, posY)}
+            stroke={serie.cor}
+          />
+          {serie.valores.map((valor, indice) =>
+            valor === null ? null : (
+              <circle
+                key={indice}
+                className="ponto-serie"
+                cx={xMeio(indice)}
+                cy={posY(valor)}
+                r={4}
+                fill={serie.cor}
+              />
             ),
           )}
         </g>

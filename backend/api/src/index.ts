@@ -40,6 +40,7 @@ import { leTetoDaResposta, memoriaDaResposta } from './memoria-limitada.ts';
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import { PADRAO_AVISO_DAS_PAGINAS, Servidor } from './servidor.ts';
 import { avisoSemCompleta, montaAoVivoDaApi } from './ao-vivo-da-api.ts';
+import { geraNoRefresh } from './geracao-em-processo.ts';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(AQUI, '..', '..', '..');
@@ -336,6 +337,7 @@ acesso.releA(30_000);
 // `AO_VIVO_PAGINAS` lista as páginas servidas do SRD e `AO_VIVO_SOMBRA=1` liga a
 // comparação em segundo plano. Sem nenhum dos dois nada é montado, nem pool; a linha de
 // log diz qual estado vale, e por quê.
+const aoVivoViaRefresh = process.env.AO_VIVO_VIA_REFRESH === '1' && Boolean(process.env.REFRESH_URL);
 const aoVivo = await montaAoVivoDaApi({
   root: ROOT,
   snapshotDir: DIR_SNAPSHOT,
@@ -344,6 +346,7 @@ const aoVivo = await montaAoVivoDaApi({
   // Fora do snapshot: a pasta do snapshot só é gravável pelo refresh.
   dirBase: path.join(process.env.API_RUNTIME_DIR || os.tmpdir(), 'ao-vivo'),
   conta: (nome, quanto) => servidor.metricas.conta(nome, quanto),
+  ...(aoVivoViaRefresh ? { gera: (pedido) => geraNoRefresh(process.env.REFRESH_URL!, pedido) } : {}),
 });
 console.log(aoVivo.linha);
 const avisoDaCompleta = avisoSemCompleta(ROOT, new Set(aoVivo.paginas.keys()));
@@ -409,7 +412,9 @@ const servidor = new Servidor({
       }
     } else if (process.env.REFRESH_URL) {
       try {
-        const res = await fetch(`${process.env.REFRESH_URL.replace(/\/+$/, '')}/pede`, {
+        let refreshBase = process.env.REFRESH_URL;
+      while (refreshBase.endsWith('/')) refreshBase = refreshBase.slice(0, -1);
+      const res = await fetch(`${refreshBase}/pede`, {
           method: 'POST',
           signal: AbortSignal.timeout(3_000),
         });

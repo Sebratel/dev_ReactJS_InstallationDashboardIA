@@ -173,7 +173,7 @@ if (process.argv.includes('--mapas')) {
     const regioes: { faixa: string; nome: string; rss: number }[] = [];
     let atual: { faixa: string; nome: string; rss: number } | null = null;
     for (const l of fs.readFileSync('/proc/self/smaps', 'utf8').split('\n')) {
-      const cab = /^([0-9a-f]+-[0-9a-f]+) \S+ \S+ \S+ \S+\s*(.*)$/.exec(l);
+      const cab = /^([0-9a-f]+-[0-9a-f]+) \S+ \S+ \S+ \S+(?:\s+(\S.*))?$/.exec(l);
       if (cab) {
         atual = { faixa: cab[1]!, nome: cab[2]!.trim() || '[anônima]', rss: 0 };
         regioes.push(atual);

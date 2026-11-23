@@ -274,7 +274,7 @@ export function planeja(
     }
   }
 
-  const doPlano: TabelaDoPlano[] = [...tabelas].sort().map((k) => {
+  const doPlano: TabelaDoPlano[] = [...tabelas].sort((a, b) => a.localeCompare(b)).map((k) => {
     const t = model.table(k)!;
     if (!t.queryRef && !t.tableDax) {
       throw new Error(
@@ -292,8 +292,8 @@ export function planeja(
       ...new Set(
         doPlano.map((t) => t.query).filter((q): q is string => q !== null),
       ),
-    ].sort(),
+    ].sort((a, b) => a.localeCompare(b)),
     calculadas: doPlano.filter((t) => t.query === null).map((t) => t.nome),
-    medidas: [...medidas].sort(),
+    medidas: [...medidas].sort((a, b) => a.localeCompare(b)),
   };
 }

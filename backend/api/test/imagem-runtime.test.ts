@@ -259,9 +259,10 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
   assert.equal(web.depends_on?.api?.condition, 'service_healthy');
   assert.equal(web.mem_limit, '128m', 'a tela não pode herdar toda a memória do host');
 
-  assert.equal(api.environment?.CACHE_RESPOSTA_MB, '256');
-  // Pré-cálculo de filtros religado em 20/10/2026 ("tudo pré-carregado").
-  assert.equal(api.environment?.AQUECE_FILTROS_ATE, '20');
+  assert.equal(api.environment?.CACHE_RESPOSTA_MB, '64');
+  // Pré-cálculo de filtros desligado: Redis absorve o cache sem inflar heap das workers.
+  assert.equal(api.environment?.AQUECE_FILTROS_ATE, '0');
+  assert.equal(api.environment?.AO_VIVO_VIA_REFRESH, '1');
   assert.equal(api.environment?.API_DATASETS_POR_WORKER, '1');
   assert.equal(api.environment?.CACHE_VISUAL_MB, '128');
   assert.equal(api.environment?.MALLOC_ARENA_MAX, '2');
@@ -269,8 +270,8 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
   // recálculo da meia-noite viravam às 21:00 daqui.
   assert.equal(api.environment?.TZ, 'America/Sao_Paulo');
   assert.equal(compose.services.refresh?.environment?.TZ, 'America/Sao_Paulo');
-  // 2304m -> 3072m em 21/10/2026: a api caiu 4 vezes em ~6 h (kill por memória do cgroup).
-  assert.equal(api.mem_limit, '3072m');
+  // 3072m -> 2048m: filho do ao-vivo (~1 GB) movido para o container `refresh`.
+  assert.equal(api.mem_limit, '2048m');
   assert.equal(compose.services.refresh?.mem_limit, '3g');
   // Orçamento do host (20/10/2026): 3 GB contínuos; o pico do refresh não pode
   // afetar a API nem as outras aplicações do servidor.

@@ -24,37 +24,67 @@ import { MensagemDeEstado } from '../ui/Estado.tsx';
 /** "12/11/2026 às 14:32", ou `null`. O fuso é o do navegador — o mesmo das outras telas. */
 function quando(iso: string | null): string | null {
   if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  const data = new Date(iso);
+  if (Number.isNaN(data.getTime())) return null;
+  return data.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+/** O texto gravado de uma meta, ou vazio quando ela ainda não tem valor. */
+function textoDaMeta(valor: number | null): string {
+  return valor === null ? '' : String(valor);
+}
+
+/**
+ * O que o campo tem agora, em relação ao que está gravado.
+ *
+ * Meta é contagem de instalações: inteiro e não negativo. Texto vazio não é erro — é
+ * quem ainda não escreveu nada; por isso `invalido` só vale com algo digitado.
+ */
+function leMetaDigitada(texto: string, gravado: number | null) {
+  const limpo = texto.trim();
+  const valor = Number(limpo);
+  const valido = limpo !== '' && Number.isInteger(valor) && valor >= 0;
+  return {
+    valor: valido ? valor : null,
+    invalido: limpo !== '' && !valido,
+    mudou: valido && valor !== gravado,
+  };
+}
+
+/** A linha que diz desde quando a meta vale, e quem a gravou. */
+function vigenciaDaMeta(meta: MetaDeNegocio, gravadaEm: string | null): string {
+  if (meta.valor === null) {
+    return 'Ainda não definida — enquanto estiver em branco, o KPI do painel aparece vazio.';
+  }
+  if (!gravadaEm) return 'Em vigor.';
+  const autor = meta.por ? `, por ${meta.por}` : '';
+  return `Em vigor desde ${gravadaEm}${autor}.`;
 }
 
 function UmaMeta({ meta }: { meta: MetaDeNegocio }) {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
   // O que está no campo. Começa no valor gravado e NUNCA é sincronizado sozinho com ele:
   // quem está digitando não pode ver o número pular embaixo do cursor, e uma releitura
   // (outro gestor salvou noutra aba) não pode apagar o que esta pessoa escreveu. Se os
   // dois divergirem, a linha "Em vigor desde…" embaixo mostra qual é o gravado.
-  const [texto, setTexto] = useState(meta.valor === null ? '' : String(meta.valor));
+  const [texto, setTexto] = useState(textoDaMeta(meta.valor));
 
   const gravacao = useMutation({
     mutationFn: (valor: number) => salvaMeta(meta.id, valor),
     onSuccess: (resposta) => {
-      qc.setQueryData(CHAVE_METAS, resposta);
+      queryClient.setQueryData(CHAVE_METAS, resposta);
       // O campo passa a mostrar o que o SERVIDOR devolveu, não o que foi digitado.
-      const gravada = resposta.metas.find((m) => m.id === meta.id);
-      setTexto(gravada?.valor == null ? '' : String(gravada.valor));
+      const gravada = resposta.metas.find((metaAtual) => metaAtual.id === meta.id);
+      setTexto(textoDaMeta(gravada?.valor ?? null));
     },
   });
 
-  const n = Number(texto.trim());
-  const valido = texto.trim() !== '' && Number.isInteger(n) && n >= 0;
-  const mudou = valido && n !== meta.valor;
+  const digitado = leMetaDigitada(texto, meta.valor);
 
-  const envia = (e: FormEvent) => {
-    e.preventDefault();
-    if (!mudou || gravacao.isPending) return;
-    gravacao.mutate(n);
+  const envia = (evento: FormEvent) => {
+    evento.preventDefault();
+    if (!digitado.mudou || gravacao.isPending) return;
+    gravacao.mutate(digitado.valor!);
   };
 
   const gravadaEm = quando(meta.em);
@@ -73,38 +103,29 @@ function UmaMeta({ meta }: { meta: MetaDeNegocio }) {
               inputMode="numeric"
               value={texto}
               aria-label={`${meta.nome} — valor`}
-              onChange={(e) => setTexto(e.target.value)}
+              onChange={(evento) => setTexto(evento.target.value)}
             />
           </label>
-          <Botao variante="primario" type="submit" disabled={!mudou || gravacao.isPending}>
+          <Botao variante="primario" type="submit" disabled={!digitado.mudou || gravacao.isPending}>
             {gravacao.isPending ? 'Salvando…' : 'Salvar'}
           </Botao>
-          {mudou ? (
-            <Botao
-              variante="secundario"
-              onClick={() => setTexto(meta.valor === null ? '' : String(meta.valor))}
-            >
+          {digitado.mudou ? (
+            <Botao variante="secundario" onClick={() => setTexto(textoDaMeta(meta.valor))}>
               Desfazer
             </Botao>
           ) : null}
         </div>
 
-        {texto.trim() !== '' && !valido ? (
+        {digitado.invalido ? (
           <Erro>A meta tem de ser um número inteiro, sem casas decimais.</Erro>
         ) : null}
         {gravacao.isError ? <Erro>{(gravacao.error as Error).message}</Erro> : null}
-        {gravacao.isSuccess && !mudou ? (
+        {gravacao.isSuccess && !digitado.mudou ? (
           // A promessa tem de ser a verdadeira: a gravação é imediata, o KPI não.
           <Aviso>Meta salva. O painel passa a mostrá-la na próxima carga, em até 15 minutos.</Aviso>
         ) : null}
 
-        <p className="m-0 text-[11.5px] opacity-80">
-          {meta.valor === null
-            ? 'Ainda não definida — enquanto estiver em branco, o KPI do painel aparece vazio.'
-            : gravadaEm
-              ? `Em vigor desde ${gravadaEm}${meta.por ? `, por ${meta.por}` : ''}.`
-              : 'Em vigor.'}
-        </p>
+        <p className="m-0 text-[11.5px] opacity-80">{vigenciaDaMeta(meta, gravadaEm)}</p>
         <p className="m-0 text-[11.5px] opacity-80">
           Vale para QUALQUER mês, inclusive os já fechados — é como o Power BI trata a meta. Trocar
           o valor muda também o que setembro e outubro comparam.
@@ -131,8 +152,8 @@ export function Metas() {
 
   return (
     <div className="flex flex-col gap-[var(--gap)]">
-      {metas.map((m) => (
-        <UmaMeta key={m.id} meta={m} />
+      {metas.map((metaAtual) => (
+        <UmaMeta key={metaAtual.id} meta={metaAtual} />
       ))}
     </div>
   );

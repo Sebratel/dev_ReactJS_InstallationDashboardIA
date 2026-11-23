@@ -18,13 +18,13 @@ export function useCaixa(): [React.RefObject<HTMLDivElement | null>, { w: number
   const [caixa, setCaixa] = useState(CAIXA_PADRAO);
 
   const medir = useCallback(() => {
-    const r = ref.current?.getBoundingClientRect();
+    const retangulo = ref.current?.getBoundingClientRect();
     // Caixa ainda não dimensionada: fica com a anterior. Medir zero apagaria o desenho.
-    if (!r || r.width < 1 || r.height < 1) return;
+    if (!retangulo || retangulo.width < 1 || retangulo.height < 1) return;
     setCaixa((antes) => {
-      const w = Math.floor(r.width);
-      const h = Math.floor(r.height);
-      return antes.w === w && antes.h === h ? antes : { w, h };
+      const largura = Math.floor(retangulo.width);
+      const altura = Math.floor(retangulo.height);
+      return antes.w === largura && antes.h === altura ? antes : { w: largura, h: altura };
     });
   }, []);
 

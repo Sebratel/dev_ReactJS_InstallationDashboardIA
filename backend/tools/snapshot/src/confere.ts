@@ -51,7 +51,7 @@ if (!fs.existsSync(DIR)) {
 const arquivos: ArquivoDeSnapshot[] = fs
   .readdirSync(DIR)
   .filter(ehArquivoDeSnapshot)
-  .sort()
+  .sort((a, b) => a.localeCompare(b))
   .map((f) => ({
     arquivo: f,
     calculada: f.startsWith('calc.'),

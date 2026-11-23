@@ -20,8 +20,8 @@ export function Dialogo(props: {
     <div
       className="fixed inset-0 z-60 flex items-center justify-center bg-[color-mix(in_srgb,var(--pbi-ink)_45%,transparent)] p-[24px]"
       role="presentation"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) props.aoFechar();
+      onClick={(evento) => {
+        if (evento.target === evento.currentTarget) props.aoFechar();
       }}
     >
       <div

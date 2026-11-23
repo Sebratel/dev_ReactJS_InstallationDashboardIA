@@ -35,7 +35,7 @@ export function Rosca({ visual }: { visual: VisualCalculado }) {
   const { isDark } = useThemeStore();
   const [caixaRef, caixa] = useCaixa();
 
-  const d = visual.dados as DadosDeTabela | undefined;
+  const dadosDaTabela = visual.dados as DadosDeTabela | undefined;
 
   /**
    * A coluna-categoria é a marcada `chave` (o mesmo sinal que a API já manda para
@@ -44,25 +44,30 @@ export function Rosca({ visual }: { visual: VisualCalculado }) {
    * página (`Qtd`, `Total`, `Vezes Agendado`).
    */
   const fatias = useMemo<Fatia[]>(() => {
-    if (!d || !d.colunas || !d.linhas) return [];
-    const iCatMarcada = d.colunas.findIndex((c) => c.chave);
+    if (!dadosDaTabela || !dadosDaTabela.colunas || !dadosDaTabela.linhas) return [];
+    const iCatMarcada = dadosDaTabela.colunas.findIndex((coluna) => coluna.chave);
     const iCat = iCatMarcada >= 0 ? iCatMarcada : 0;
-    const iVal = d.colunas.findIndex((c, i) => i !== iCat && c.tipo === 'number');
+    const iVal = dadosDaTabela.colunas.findIndex(
+      (coluna, indice) => indice !== iCat && coluna.tipo === 'number',
+    );
     if (iVal < 0) return [];
 
-    return d.linhas
+    return dadosDaTabela.linhas
       .map((linha) => ({
-        rotulo: formata(linha[iCat] ?? null, d.colunas[iCat]?.tipo ?? null).texto,
+        rotulo: formata(linha[iCat] ?? null, dadosDaTabela.colunas[iCat]?.tipo ?? null).texto,
         valor: typeof linha[iVal] === 'number' ? linha[iVal] : 0,
       }))
-      .filter((f) => f.valor > 0)
-      .map((f, i) => ({ ...f, cor: corNoTema(corDaSerie(f.rotulo, i), isDark) }));
-  }, [d, isDark]);
+      .filter((linha) => linha.valor > 0)
+      .map((linha, indice) => ({
+        ...linha,
+        cor: corNoTema(corDaSerie(linha.rotulo, indice), isDark),
+      }));
+  }, [dadosDaTabela, isDark]);
 
-  if (!d) return null;
+  if (!dadosDaTabela) return null;
 
-  const total = fatias.reduce((a, f) => a + f.valor, 0);
-  const titulo = tituloDeTabela(visual, d.colunas ?? []);
+  const total = fatias.reduce((soma, fatia) => soma + fatia.valor, 0);
+  const titulo = tituloDeTabela(visual, dadosDaTabela.colunas ?? []);
 
   if (fatias.length === 0 || total === 0) {
     return (
@@ -77,8 +82,8 @@ export function Rosca({ visual }: { visual: VisualCalculado }) {
   const espessuraTraco = Math.max(ESPESSURA_MINIMA, raioExterno * ESPESSURA);
   const raioMedio = Math.max(1, raioExterno - espessuraTraco / 2);
   const circunferencia = 2 * Math.PI * raioMedio;
-  const cx = caixa.w / 2;
-  const cy = lado / 2;
+  const centroX = caixa.w / 2;
+  const centroY = lado / 2;
 
   // Mutação controlada dentro do `.map`, mesmo idioma de `Grafico.tsx` (`acumulado.alto`
   // nas colunas empilhadas): a ordem de `fatias` é a ordem de desenho, e cada fatia
@@ -88,11 +93,11 @@ export function Rosca({ visual }: { visual: VisualCalculado }) {
   return (
     <Cartao titulo={titulo} id={visual.id} altura="tabela">
       <div className="legenda">
-        {fatias.map((f) => (
-          <span className="chave" key={f.rotulo}>
-            <i className="ponto" style={{ background: f.cor }} />
+        {fatias.map((fatia) => (
+          <span className="chave" key={fatia.rotulo}>
+            <i className="ponto" style={{ background: fatia.cor }} />
             <span>
-              {f.rotulo} · {inteiro(f.valor)}
+              {fatia.rotulo} · {inteiro(fatia.valor)}
             </span>
           </span>
         ))}
@@ -105,32 +110,32 @@ export function Rosca({ visual }: { visual: VisualCalculado }) {
           role="img"
           aria-label={`${titulo}: total ${inteiro(total)}, ${fatias.length} categoria(s)`}
         >
-          <g transform={`rotate(-90 ${cx} ${cy})`}>
-            {fatias.map((f) => {
-              const comprimento = (f.valor / total) * circunferencia;
+          <g transform={`rotate(-90 ${centroX} ${centroY})`}>
+            {fatias.map((fatia) => {
+              const comprimento = (fatia.valor / total) * circunferencia;
               const deslocamento = -((acumulado.valor / total) * circunferencia);
-              acumulado.valor += f.valor;
+              acumulado.valor += fatia.valor;
               return (
                 <circle
-                  key={f.rotulo}
-                  cx={cx}
-                  cy={cy}
+                  key={fatia.rotulo}
+                  cx={centroX}
+                  cy={centroY}
                   r={raioMedio}
                   fill="none"
-                  stroke={f.cor}
+                  stroke={fatia.cor}
                   strokeWidth={espessuraTraco}
                   strokeDasharray={`${comprimento} ${Math.max(0, circunferencia - comprimento)}`}
                   strokeDashoffset={deslocamento}
                 >
-                  <title>{`${f.rotulo}: ${inteiro(f.valor)} (${((f.valor / total) * 100).toFixed(0)}%)`}</title>
+                  <title>{`${fatia.rotulo}: ${inteiro(fatia.valor)} (${((fatia.valor / total) * 100).toFixed(0)}%)`}</title>
                 </circle>
               );
             })}
           </g>
-          <text x={cx} y={cy - 3} textAnchor="middle" className="rosca-total">
+          <text x={centroX} y={centroY - 3} textAnchor="middle" className="rosca-total">
             {inteiro(total)}
           </text>
-          <text x={cx} y={cy + 15} textAnchor="middle" className="rosca-total-rotulo">
+          <text x={centroX} y={centroY + 15} textAnchor="middle" className="rosca-total-rotulo">
             total
           </text>
         </svg>

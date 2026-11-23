@@ -102,14 +102,56 @@ const DOURADO_CLARO = '#F0E199';
 
 /** A cor de UMA coluna de série única, pela magnitude: clara no menor valor da tela,
  *  cheia no maior — o mesmo tom, mais claro para menos (é magnitude, não identidade). */
+
+/** Dois dígitos, para dia e mês. */
+const doisDigitos = (numero: number) => String(numero).padStart(2, '0');
+
+/**
+ * O rótulo de um dia no eixo: só o que distingue um ponto do outro.
+ *
+ * Com tudo no mesmo mês, o dia basta; cruzando meses, entra o mês; cruzando anos, o ano
+ * abreviado também.
+ */
+function rotuloDoDia(
+  dia: number,
+  mes: number,
+  ano: number | null,
+  periodo: { variosAnos: boolean; variosMeses: boolean },
+): string {
+  if (periodo.variosAnos && ano !== null) {
+    return `${doisDigitos(dia)}/${doisDigitos(mes)}/${String(ano).slice(-2)}`;
+  }
+  if (periodo.variosMeses) return `${doisDigitos(dia)}/${doisDigitos(mes)}`;
+  return String(dia);
+}
+
+/**
+ * O nome de uma série na legenda.
+ *
+ * Sem campo de legenda, vale o nome da medida. Com ele, vale o valor da legenda — e só
+ * quando há MAIS DE UMA medida o nome dela entra junto, para não repetir a mesma palavra
+ * em todas as entradas.
+ */
+function nomeDaSerieNaLegenda(
+  sufixo: string,
+  nomeDaMedida: string | null | undefined,
+  quantasSeries: number,
+): string {
+  const nomeDoValor = nomeDaMedida ?? '(sem rótulo)';
+  if (!sufixo) return nomeDoValor;
+  return quantasSeries > 1 ? `${sufixo} · ${nomeDoValor}` : sufixo;
+}
+
 export function corDaColunaPorValor(valor: number, min: number, max: number): string {
   if (max <= min) return DOURADO;
-  const t = Math.max(0, Math.min(1, (valor - min) / (max - min)));
-  const de = [1, 3, 5].map((i) => parseInt(DOURADO_CLARO.slice(i, i + 2), 16));
-  const ate = [1, 3, 5].map((i) => parseInt(DOURADO.slice(i, i + 2), 16));
-  return `#${de
-    .map((v, i) =>
-      Math.round(v + (ate[i]! - v) * t)
+  const tempo = Math.max(0, Math.min(1, (valor - min) / (max - min)));
+  const inicio = [1, 3, 5].map((indice) =>
+    Number.parseInt(DOURADO_CLARO.slice(indice, indice + 2), 16),
+  );
+  const ate = [1, 3, 5].map((indice) => Number.parseInt(DOURADO.slice(indice, indice + 2), 16));
+  return `#${inicio
+    .map((valor, indice) =>
+      Math.round(valor + (ate[indice]! - valor) * tempo)
         .toString(16)
         .padStart(2, '0'),
     )
@@ -129,8 +171,8 @@ function chaveDeCor(nome: string): string {
 
 function ordemNaPilha(nome: string): number {
   const chaves = [...POR_SIGNIFICADO.keys()];
-  const i = chaves.indexOf(chaveDeCor(nome));
-  return i < 0 ? chaves.length : i;
+  const indice = chaves.indexOf(chaveDeCor(nome));
+  return indice < 0 ? chaves.length : indice;
 }
 
 export function corDaSerie(nome: string, indice: number): string {
@@ -202,7 +244,7 @@ interface ChaveDoGrafico {
   papel?: string;
 }
 
-const num = (v: Valor): number | null => (typeof v === 'number' ? v : null);
+const num = (valor: Valor): number | null => (typeof valor === 'number' ? valor : null);
 
 /**
  * Teto de cardinalidade — GUARDA, não "o que cabe na tela".
@@ -241,15 +283,15 @@ const NIVEIS_DE_DATA = new Set(['Ano', 'Mês', 'Dia']);
 
 /** O eixo é só a hierarquia automática de datas (`[Data].[Ano]`, `.[Mês]`, `.[Dia]`)? */
 function ehHierarquiaDeData(niveis: readonly (string | null)[]): boolean {
-  return niveis.length > 0 && niveis.every((n) => n !== null && NIVEIS_DE_DATA.has(n));
+  return niveis.length > 0 && niveis.every((nivel) => nivel !== null && NIVEIS_DE_DATA.has(nivel));
 }
 
 /** O número de um nível de data: ano e dia já são número, o mês chega por extenso. */
-function numeroDoNivel(v: Valor, nivel: string | null): number | null {
-  if (typeof v === 'number') return v;
-  if (nivel === 'Mês' && typeof v === 'string') {
-    const k = MESES.indexOf(v.toLowerCase());
-    return k >= 0 ? k + 1 : null;
+function numeroDoNivel(valor: Valor, nivel: string | null): number | null {
+  if (typeof valor === 'number') return valor;
+  if (nivel === 'Mês' && typeof valor === 'string') {
+    const indiceSerie = MESES.indexOf(valor.toLowerCase());
+    return indiceSerie >= 0 ? indiceSerie + 1 : null;
   }
   return null;
 }
@@ -267,19 +309,24 @@ function ordenaPorData(
   categorias: readonly CategoriaMontada[],
   niveis: readonly (string | null)[],
 ): CategoriaMontada[] {
-  const ordem = ['Ano', 'Mês', 'Dia'].map((n) => niveis.indexOf(n)).filter((i) => i >= 0);
-  const numeros = (c: CategoriaMontada) =>
-    ordem.map((i) => numeroDoNivel(c.valores[i] ?? null, niveis[i] ?? null) ?? Infinity);
+  const ordem = ['Ano', 'Mês', 'Dia']
+    .map((nome) => niveis.indexOf(nome))
+    .filter((indice) => indice >= 0);
+  const numeros = (categoria: CategoriaMontada) =>
+    ordem.map(
+      (indice) =>
+        numeroDoNivel(categoria.valores[indice] ?? null, niveis[indice] ?? null) ?? Infinity,
+    );
   return categorias
-    .map((c) => ({ c, n: numeros(c) }))
-    .sort((a, b) => {
-      for (let k = 0; k < a.n.length; k += 1) {
-        const dif = a.n[k]! - b.n[k]!;
+    .map((categoria) => ({ c: categoria, n: numeros(categoria) }))
+    .sort((primeiro, segundo) => {
+      for (let indiceSerie = 0; indiceSerie < primeiro.n.length; indiceSerie += 1) {
+        const dif = primeiro.n[indiceSerie]! - segundo.n[indiceSerie]!;
         if (dif !== 0 && !Number.isNaN(dif)) return dif;
       }
       return 0;
     })
-    .map((x) => x.c);
+    .map((ordenada) => ordenada.c);
 }
 
 /**
@@ -289,110 +336,115 @@ function ordenaPorData(
  * leva a data inteira com o dia da semana, que explica o sábado baixo da agenda.
  */
 function rotulaDias(categorias: CategoriaMontada[], niveis: readonly (string | null)[]): void {
-  const [iAno, iMes, iDia] = ['Ano', 'Mês', 'Dia'].map((n) => niveis.indexOf(n));
+  const [iAno, iMes, iDia] = ['Ano', 'Mês', 'Dia'].map((nome) => niveis.indexOf(nome));
   if (iDia! < 0 || iMes! < 0) return;
-  const datas = categorias.map((c) => ({
-    ano: iAno! >= 0 ? numeroDoNivel(c.valores[iAno!] ?? null, 'Ano') : null,
-    mes: numeroDoNivel(c.valores[iMes!] ?? null, 'Mês'),
-    dia: numeroDoNivel(c.valores[iDia!] ?? null, 'Dia'),
+  const datas = categorias.map((categoria) => ({
+    ano: iAno! >= 0 ? numeroDoNivel(categoria.valores[iAno!] ?? null, 'Ano') : null,
+    mes: numeroDoNivel(categoria.valores[iMes!] ?? null, 'Mês'),
+    dia: numeroDoNivel(categoria.valores[iDia!] ?? null, 'Dia'),
   }));
-  const anos = new Set(datas.map((d) => d.ano));
-  const meses = new Set(datas.map((d) => `${d.ano}-${d.mes}`));
-  const dd = (n: number) => String(n).padStart(2, '0');
-  categorias.forEach((c, k) => {
-    const { ano, mes, dia } = datas[k]!;
+  const anos = new Set(datas.map((data) => data.ano));
+  const meses = new Set(datas.map((data) => `${data.ano}-${data.mes}`));
+  const doisDigitos = (numero: number) => String(numero).padStart(2, '0');
+  categorias.forEach((categoria, indice) => {
+    const { ano, mes, dia } = datas[indice]!;
     if (mes === null || dia === null) return;
-    c.eixo =
-      anos.size > 1 && ano !== null
-        ? `${dd(dia)}/${dd(mes)}/${String(ano).slice(-2)}`
-        : meses.size > 1
-          ? `${dd(dia)}/${dd(mes)}`
-          : String(dia);
+    // O eixo mostra só o que distingue um ponto do outro: o dia basta quando tudo é do
+    // mesmo mês; o ano entra quando a série cruza mais de um.
+    categoria.eixo = rotuloDoDia(dia, mes, ano, {
+      variosAnos: anos.size > 1,
+      variosMeses: meses.size > 1,
+    });
     if (ano !== null) {
       const semana = DIAS_DA_SEMANA[new Date(ano, mes - 1, dia).getDay()];
-      c.rotulo = `${semana}, ${dd(dia)}/${dd(mes)}/${ano}`;
+      categoria.rotulo = `${semana}, ${doisDigitos(dia)}/${doisDigitos(mes)}/${ano}`;
     }
   });
 }
 
-export function montaGrafico(d: DadosDeGrafico): GraficoMontado {
-  const base = POR_TIPO[d.tipo] ?? { forma: 'colunas' as Forma, empilha: false, percentual: false };
+export function montaGrafico(dados: DadosDeGrafico): GraficoMontado {
+  const base = POR_TIPO[dados.tipo] ?? {
+    forma: 'colunas' as Forma,
+    empilha: false,
+    percentual: false,
+  };
   const avisos: string[] = [];
 
-  const chaves = (d.chaves as ChaveDoGrafico[]) ?? [];
+  const chaves = (dados.chaves as ChaveDoGrafico[]) ?? [];
   const iEixo = chaves
-    .map((_, i) => i)
-    .filter((i) => (chaves[i]!.papel ?? 'Category') === 'Category');
-  const iLegenda = chaves.map((_, i) => i).filter((i) => chaves[i]!.papel === 'Series');
+    .map((_, indice) => indice)
+    .filter((chave) => (chaves[chave]!.papel ?? 'Category') === 'Category');
+  const iLegenda = chaves
+    .map((_, indice) => indice)
+    .filter((chave) => chaves[chave]!.papel === 'Series');
 
-  const tipoDe = (i: number): TipoDeValor => d.tiposDeChave[i] ?? null;
-  const rotuloDaParte = (v: Valor | undefined, i: number): string =>
-    chaves[i]?.nivel === 'Ano' && typeof v === 'number'
-      ? String(v)
-      : formata(v ?? null, tipoDe(i)).texto;
+  const tipoDe = (indice: number): TipoDeValor => dados.tiposDeChave[indice] ?? null;
+  const rotuloDaParte = (valor: Valor | undefined, indice: number): string =>
+    chaves[indice]?.nivel === 'Ano' && typeof valor === 'number'
+      ? String(valor)
+      : formata(valor ?? null, tipoDe(indice)).texto;
   const rotulo = (vals: Valor[], idx: number[]): string =>
-    idx.map((i) => rotuloDaParte(vals[i], i)).join(' / ') || '—';
+    idx.map((indice) => rotuloDaParte(vals[indice], indice)).join(' / ') || '—';
 
   const vistas = new Set<string>();
   let categorias: CategoriaMontada[] = [];
-  for (const p of d.pontos) {
-    const chave = JSON.stringify(iEixo.map((i) => p.categoria[i] ?? null));
+  for (const pontoAtual of dados.pontos) {
+    const chave = JSON.stringify(iEixo.map((indice) => pontoAtual.categoria[indice] ?? null));
     if (vistas.has(chave)) continue;
     vistas.add(chave);
     categorias.push({
-      rotulo: rotulo(p.categoria, iEixo),
-      valores: iEixo.map((i) => p.categoria[i] ?? null),
+      rotulo: rotulo(pontoAtual.categoria, iEixo),
+      valores: iEixo.map((indice) => pontoAtual.categoria[indice] ?? null),
     });
   }
 
-  const niveisDoEixo = iEixo.map((i) => chaves[i]!.nivel ?? null);
+  const niveisDoEixo = iEixo.map((indice) => chaves[indice]!.nivel ?? null);
   if (ehHierarquiaDeData(niveisDoEixo)) {
     categorias = ordenaPorData(categorias, niveisDoEixo);
     rotulaDias(categorias, niveisDoEixo);
   }
   const posDaCategoria = new Map<string, number>(
-    categorias.map((c, k) => [JSON.stringify(c.valores), k]),
+    categorias.map((categoria, indice) => [JSON.stringify(categoria.valores), indice]),
   );
 
   const mapa = new Map<string, SerieMontada>();
   const ordem: string[] = [];
 
-  for (const p of d.pontos) {
-    const cat = posDaCategoria.get(JSON.stringify(iEixo.map((i) => p.categoria[i] ?? null)))!;
-    const sufixo = iLegenda.length ? rotulo(p.categoria, iLegenda) : '';
+  for (const ponto of dados.pontos) {
+    const cat = posDaCategoria.get(
+      JSON.stringify(iEixo.map((indice) => ponto.categoria[indice] ?? null)),
+    )!;
+    const sufixo = iLegenda.length ? rotulo(ponto.categoria, iLegenda) : '';
 
-    d.series.forEach((s, k) => {
-      const nomeDoValor = s.nome ?? '(sem rótulo)';
-      const nome = sufixo
-        ? d.series.length > 1
-          ? `${sufixo} · ${nomeDoValor}`
-          : sufixo
-        : nomeDoValor;
-      const chave = `${k} ${sufixo}`;
+    dados.series.forEach((serieAtual, indice) => {
+      const nome = nomeDaSerieNaLegenda(sufixo, serieAtual.nome, dados.series.length);
+      const chave = `${indice} ${sufixo}`;
       let serie = mapa.get(chave);
       if (!serie) {
         serie = {
           nome,
           chave,
           cor: corDaSerie(nome, ordem.length),
-          desenho: s.papel === 'Y2' ? 'linha' : 'area',
+          desenho: serieAtual.papel === 'Y2' ? 'linha' : 'area',
           valores: new Array<number | null>(categorias.length).fill(null),
         };
         mapa.set(chave, serie);
         ordem.push(chave);
       }
-      const v = num(p.valores[k] ?? null);
-      if (v !== null) serie.valores[cat] = v;
+      const valor = num(ponto.valores[indice] ?? null);
+      if (valor !== null) serie.valores[cat] = valor;
     });
   }
 
-  let series = ordem.map((c) => mapa.get(c)!);
+  let series = ordem.map((coluna) => mapa.get(coluna)!);
 
-  if (series.some((s) => POR_SIGNIFICADO.has(chaveDeCor(s.nome)))) {
-    series = [...series].sort((a, b) => ordemNaPilha(a.nome) - ordemNaPilha(b.nome));
+  if (series.some((serie) => POR_SIGNIFICADO.has(chaveDeCor(serie.nome)))) {
+    series = [...series].sort(
+      (primeiro, segundo) => ordemNaPilha(primeiro.nome) - ordemNaPilha(segundo.nome),
+    );
   }
 
-  if (iLegenda.length > 0 && series.some((s) => s.desenho === 'linha')) {
+  if (iLegenda.length > 0 && series.some((serie) => serie.desenho === 'linha')) {
     avisos.push(
       `a linha aparece uma por ${chaves[iLegenda[0]!]!.nome ?? 'valor da legenda'}, não como total: ` +
         `a medida foi calculada dentro de cada grupo, e somar grupos não dá o total de uma ` +
@@ -416,10 +468,13 @@ export function montaGrafico(d: DadosDeGrafico): GraficoMontado {
 
   return {
     forma: base.forma,
-    empilha: base.empilha && series.filter((s) => s.desenho === 'area').length > 1,
+    empilha: base.empilha && series.filter((serie) => serie.desenho === 'area').length > 1,
     percentual: base.percentual,
     categorias: categorias.slice(0, MAXIMO_DE_CATEGORIAS),
-    series: series.map((s) => ({ ...s, valores: s.valores.slice(0, MAXIMO_DE_CATEGORIAS) })),
+    series: series.map((serie) => ({
+      ...serie,
+      valores: serie.valores.slice(0, MAXIMO_DE_CATEGORIAS),
+    })),
     facetada,
     avisos,
   };
@@ -430,24 +485,24 @@ export function maiorValorDe(
   inicial = 0,
 ): number {
   let maior = inicial;
-  for (const s of series) {
-    for (const v of s.valores) {
-      if (v !== null && v > maior) maior = v;
+  for (const serie of series) {
+    for (const valor of serie.valores) {
+      if (valor !== null && valor > maior) maior = valor;
     }
   }
   return maior;
 }
 
 function tetoDasAreas(series: readonly SerieMontada[], empilha: boolean): number {
-  const areas = series.filter((s) => s.desenho === 'area');
+  const areas = series.filter((serie) => serie.desenho === 'area');
   if (areas.length === 0) return 0;
   if (!empilha) return maiorValorDe(areas);
-  const n = areas[0]!.valores.length;
+  const numero = areas[0]!.valores.length;
   let teto = 0;
-  for (let i = 0; i < n; i++)
+  for (let indice = 0; indice < numero; indice++)
     teto = Math.max(
       teto,
-      areas.reduce((a, s) => a + (s.valores[i] ?? 0), 0),
+      areas.reduce((soma, area) => soma + (area.valores[indice] ?? 0), 0),
     );
   return teto;
 }
@@ -455,7 +510,7 @@ function tetoDasAreas(series: readonly SerieMontada[], empilha: boolean): number
 const FATOR_MAXIMO = 6;
 
 function decideFaceta(series: readonly SerieMontada[], empilha: boolean): string | null {
-  const linhas = series.filter((s) => s.desenho === 'linha');
+  const linhas = series.filter((serie) => serie.desenho === 'linha');
   if (linhas.length === 0) return null;
   const teto = tetoDasAreas(series, empilha);
   if (teto === 0) return null;
@@ -477,14 +532,18 @@ function decideFaceta(series: readonly SerieMontada[], empilha: boolean): string
  * `CLAUDE.md` (bordô sobre branco: 9,87:1 — reproduzido por esta função, não copiado).
  */
 function luminanciaRelativa(hex: string): number {
-  const canais = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
-  const [r, g, b] = canais.map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
-  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+  const canais = [1, 3, 5].map(
+    (indice) => Number.parseInt(hex.slice(indice, indice + 2), 16) / 255,
+  );
+  const [registro, grafico, azul] = canais.map((canal) =>
+    canal <= 0.03928 ? canal / 12.92 : ((canal + 0.055) / 1.055) ** 2.4,
+  );
+  return 0.2126 * registro! + 0.7152 * grafico! + 0.0722 * azul!;
 }
 
-function contraste(l1: number, l2: number): number {
-  const claro = Math.max(l1, l2);
-  const escuro = Math.min(l1, l2);
+function contraste(luminanciaA: number, luminanciaB: number): number {
+  const claro = Math.max(luminanciaA, luminanciaB);
+  const escuro = Math.min(luminanciaA, luminanciaB);
   return (claro + 0.05) / (escuro + 0.05);
 }
 
@@ -531,12 +590,15 @@ export function marcasDoEixo(teto: number, quantas = 4): number[] {
   if (!Number.isFinite(teto) || teto <= 0) return [0];
   const cru = teto / quantas;
   const grandeza = 10 ** Math.floor(Math.log10(cru));
-  const passo = [1, 2, 2.5, 5, 10].map((m) => m * grandeza).find((p) => p >= cru) ?? 10 * grandeza;
+  const passo =
+    [1, 2, 2.5, 5, 10].map((medida) => medida * grandeza).find((ponto) => ponto >= cru) ??
+    10 * grandeza;
   // O primeiro múltiplo do passo que ALCANÇA o teto. A folga de 1e-9 é contra o ponto
   // flutuante: com teto 200 e passo 50, `Math.ceil` tem de dar 4, não 5.
   const limite = Math.ceil(teto / passo - 1e-9) * passo;
   const marcas: number[] = [];
-  for (let v = 0; v <= limite + passo / 2; v += passo) marcas.push(Number(v.toFixed(10)));
+  for (let valor = 0; valor <= limite + passo / 2; valor += passo)
+    marcas.push(Number(valor.toFixed(10)));
   return marcas;
 }
 

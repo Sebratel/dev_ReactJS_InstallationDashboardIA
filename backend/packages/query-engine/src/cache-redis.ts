@@ -53,6 +53,6 @@ export class RedisCache implements Cache {
       cursor = next;
       found.push(...batch);
     } while (cursor !== '0');
-    return [...new Set(found)].sort();
+    return [...new Set(found)].sort((a, b) => a.localeCompare(b));
   }
 }

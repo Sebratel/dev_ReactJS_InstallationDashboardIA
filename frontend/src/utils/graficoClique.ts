@@ -18,7 +18,7 @@ export interface ChaveDoGrafico {
 
 /** As chaves de EIXO (papel `Category`, ou sem papel — o padrão é eixo). */
 export function chavesDeEixoDe(chaves: readonly ChaveDoGrafico[]): ChaveDoGrafico[] {
-  return chaves.filter((c) => (c.papel ?? 'Category') === 'Category');
+  return chaves.filter((chave) => (chave.papel ?? 'Category') === 'Category');
 }
 
 /**
@@ -31,13 +31,13 @@ export function alvosDaCategoria(
   valores: readonly Valor[],
 ): AlvoDeFiltro[] {
   return chavesDeEixo
-    .map((c, k) => ({
-      tabela: c.tabela ?? '',
-      coluna: c.coluna ?? '',
-      ...(c.nivel ? { nivel: c.nivel } : {}),
-      valor: valores[k] ?? null,
+    .map((categoria, indice) => ({
+      tabela: categoria.tabela ?? '',
+      coluna: categoria.coluna ?? '',
+      ...(categoria.nivel ? { nivel: categoria.nivel } : {}),
+      valor: valores[indice] ?? null,
     }))
-    .filter((a) => a.tabela !== '' && a.coluna !== '' && a.valor !== null);
+    .filter((alvo) => alvo.tabela !== '' && alvo.coluna !== '' && alvo.valor !== null);
 }
 
 /** A seleção atual de cada nível do eixo — `null` no nível sem filtro nenhum. */
@@ -45,9 +45,14 @@ export function selecaoDoEixoDe(
   chavesDeEixo: readonly ChaveDoGrafico[],
   filtros: readonly FiltroDaTela[] | undefined,
 ): (readonly Valor[])[] | (readonly Valor[] | null)[] {
-  return chavesDeEixo.map((c) => {
-    if (!filtros || !c.tabela || !c.coluna) return null;
-    const sel = selecaoDe(filtros, c.tabela, c.coluna, c.nivel ?? undefined);
+  return chavesDeEixo.map((categoria) => {
+    if (!filtros || !categoria.tabela || !categoria.coluna) return null;
+    const sel = selecaoDe(
+      filtros,
+      categoria.tabela,
+      categoria.coluna,
+      categoria.nivel ?? undefined,
+    );
     return sel.length > 0 ? sel : null;
   });
 }
@@ -58,6 +63,6 @@ export function estaSelecionadaCategoria(
   valores: readonly Valor[],
 ): boolean {
   return selecaoDoEixo.every(
-    (sel, k) => sel === null || sel.some((v) => Object.is(v, valores[k] ?? null)),
+    (sel, indice) => sel === null || sel.some((valor) => Object.is(valor, valores[indice] ?? null)),
   );
 }

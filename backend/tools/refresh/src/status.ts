@@ -213,7 +213,7 @@ export function montaStatusDeRefresh(
 
   const queriesSaude: QuerySaude[] = [];
 
-  for (const id of Array.from(idsQueries).sort()) {
+  for (const id of Array.from(idsQueries).sort((a, b) => a.localeCompare(b))) {
     const grupo = queryParaGrupo.get(id);
     const grupoStatus = grupo ? statusBruto[grupo.id] : undefined;
 

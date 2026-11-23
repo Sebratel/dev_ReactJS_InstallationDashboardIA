@@ -10,7 +10,7 @@ export function textoCsv(
   cabecalho: readonly string[],
   linhas: readonly (readonly string[])[],
 ): string {
-  const corpo = linhas.map((l) => l.map(aspas).join(';')).join('\n');
+  const corpo = linhas.map((linha) => linha.map(aspas).join(';')).join('\n');
   return `\uFEFF${cabecalho.map(aspas).join(';')}\n${corpo}`;
 }
 

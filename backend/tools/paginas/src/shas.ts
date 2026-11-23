@@ -112,7 +112,7 @@ function estavel(v: unknown): unknown {
   }
   if (v instanceof Date) return `<<data>>${v.toISOString()}`;
   const fora: Record<string, unknown> = {};
-  for (const k of Object.keys(v as Record<string, unknown>).sort()) {
+  for (const k of Object.keys(v as Record<string, unknown>).sort((a, b) => a.localeCompare(b))) {
     fora[k] = estavel((v as Record<string, unknown>)[k]);
   }
   return fora;

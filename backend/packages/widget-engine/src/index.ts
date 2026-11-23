@@ -47,11 +47,13 @@ export {
 } from './grafico.ts';
 export {
   calculaTabela,
+  calculaTabelaIndexada,
   camposAtivos,
   separaCampos,
   tabelasDoDashboard,
   type CelulaTabela,
   type ValorDeTabela,
+  type ValorDeTabelaIndexada,
 } from './tabela.ts';
 export { ancora, deslocar, resolveBorda, resolveSpan, truncar } from './datas.ts';
 export {

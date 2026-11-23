@@ -31,6 +31,7 @@ const { default: js } = await import('@eslint/js');
 const { default: globals } = await import('globals');
 const { default: reactHooks } = await import('eslint-plugin-react-hooks');
 const { default: tseslint } = await import('typescript-eslint');
+const { default: sonarjs } = await import('eslint-plugin-sonarjs');
 
 export default tseslint.config(
   { ignores: ['dist', 'node_modules'] },
@@ -40,6 +41,10 @@ export default tseslint.config(
       js.configs.recommended,
       ...tseslint.configs.recommended,
       reactHooks.configs.flat.recommended,
+      // **A régua de complexidade (23/11/2026).** `eslint-plugin-sonarjs` é o mesmo
+      // analisador do SonarLint/SonarQube: o que ele acusa aqui é o que apareceria num
+      // gate do Sonar, sem precisar de servidor Java nem de scanner no CI.
+      sonarjs.configs.recommended,
     ],
     languageOptions: { globals: { ...globals.browser } },
     rules: {
@@ -49,11 +54,57 @@ export default tseslint.config(
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
+      // O `_` descartado também vale para a regra equivalente do Sonar.
+      'sonarjs/no-unused-vars': 'off',
+
+      // **Complexidade cognitiva**: o limite do Sonar. Uma função acima disto não se lê
+      // de uma vez — quebre em funções ou componentes com nome.
+      'sonarjs/cognitive-complexity': ['error', 15],
+
+      // **Nada de laço dentro de laço, nem de `if` em quarto nível.** Agrupe antes
+      // (um `Map`) ou extraia a parte de dentro para uma função nomeada.
+      'max-depth': ['error', 3],
+      'max-nested-callbacks': ['error', 3],
+
+      // **Nome de variável é documentação (23/11/2026).** `d`, `q`, `p`, `s`, `t`, `x` não
+      // dizem o que guardam, e quem lê seis meses depois tem de reconstruir o contexto
+      // inteiro para entender uma linha. O mínimo é 3 letras, com apenas duas exceções:
+      //   - `id` — termo do domínio, usado assim em toda a API;
+      //   - `_`  — descarte proposital, a mesma convenção do `no-unused-vars` acima.
+      // `properties: 'never'` porque as CHAVES vêm do contrato da API (`d.de`, `p.p10`)
+      // e atributos SVG (`<rect x={...} y={...} />`).
+      'id-length': ['error', { min: 3, exceptions: ['id', '_'], properties: 'never' }],
+
+      // **`sonarjs/todo-tag` fica DESLIGADA de propósito.** A documentação e os
+      // comentários deste repositório são em português (CLAUDE.md, regra 6), e a regra
+      // marca a palavra "todo"/"TODO" do português — "TODO filtro da página", "todo
+      // render" — como se fosse marcador de tarefa. Eram 7 ocorrências, 7 falsos
+      // positivos. Marcador de tarefa de verdade aqui vira issue, não comentário.
+      'sonarjs/todo-tag': 'off',
     },
   },
   {
     // Os testes e as configs rodam no Node.
-    files: ['test/**/*.ts', '*.config.{js,ts}'],
+    files: ['test/**/*.{ts,tsx}', '*.config.{js,ts}'],
     languageOptions: { globals: { ...globals.node } },
+    rules: {
+      // **O que vale no código de produção não vale no de teste.** Estas três acusam
+      // risco de entrada hostil ou de rede — num teste a entrada é a que o próprio
+      // teste escreve, e o "servidor" é um `fetch` trocado por uma função:
+      //   - `super-linear-regex`: a regex varre uma string literal do próprio arquivo;
+      //   - `no-hardcoded-ip`: o IP é o da sessão falsa que o teste monta;
+      //   - `no-clear-text-protocols`: `http://localhost` de URL de fixture.
+      'sonarjs/super-linear-regex': 'off',
+      'sonarjs/no-hardcoded-ip': 'off',
+      'sonarjs/no-clear-text-protocols': 'off',
+      // Um `static` de apoio dentro de um teste não é contrato de ninguém.
+      'sonarjs/public-static-readonly': 'off',
+      // `describe` > `it` > callback já são três: o teste respira um nível a mais.
+      'max-nested-callbacks': ['error', 5],
+      // **Nome curto em teste é aceito.** O padrão de nomes vale para o código que vai a
+      // produção; num teste, `const u1 = usuario()` está a três linhas do uso e o nome
+      // do `test(...)` já diz o que está em jogo.
+      'id-length': 'off',
+    },
   },
 );

@@ -30,68 +30,68 @@ export function LinhasDoGrafico(props: {
 }) {
   const { linhas, categorias, geo } = props;
   const todos = props.todosOsPontos === true;
-  const fmt = (v: number): string =>
+  const fmt = (valor: number): string =>
     props.casas === undefined || props.casas === null
-      ? inteiro(v)
-      : formata(v, 'number', { casas: props.casas }).texto;
+      ? inteiro(valor)
+      : formata(valor, 'number', { casas: props.casas }).texto;
   return (
     <>
-      {linhas.map((s) => (
-        <g key={s.chave}>
+      {linhas.map((linha) => (
+        <g key={linha.chave}>
           <path
             className="linha-serie"
-            d={caminhoDaSerie(s.valores, geo.xMeio, geo.y)}
-            stroke={s.cor}
+            d={caminhoDaSerie(linha.valores, geo.xMeio, geo.y)}
+            stroke={linha.cor}
           />
-          {s.valores.map((v, i) =>
-            v === null ? null : (
+          {linha.valores.map((valor, indice) =>
+            valor === null ? null : (
               <circle
-                key={i}
+                key={indice}
                 className="ponto-serie"
-                cx={geo.xMeio(i)}
-                cy={geo.y(v)}
+                cx={geo.xMeio(indice)}
+                cy={geo.y(valor)}
                 r={4}
-                fill={s.cor}
+                fill={linha.cor}
               >
-                <title>{`${categorias[i]?.rotulo ?? ''} · ${s.nome}: ${fmt(v)}`}</title>
+                <title>{`${categorias[indice]?.rotulo ?? ''} · ${linha.nome}: ${fmt(valor)}`}</title>
               </circle>
             ),
           )}
         </g>
       ))}
 
-      {linhas.map((s) => {
+      {linhas.map((linha) => {
         if (todos) {
           return (
-            <g key={s.chave}>
-              {s.valores.map((v, i) =>
-                v === null ? null : (
+            <g key={linha.chave}>
+              {linha.valores.map((valor, indice) =>
+                valor === null ? null : (
                   <text
-                    key={i}
+                    key={indice}
                     className="rotulo-valor"
-                    x={geo.xMeio(i)}
-                    y={geo.y(v) - 9}
+                    x={geo.xMeio(indice)}
+                    y={geo.y(valor) - 9}
                     textAnchor="middle"
                     pointerEvents="none"
                   >
-                    {fmt(v)}
+                    {fmt(valor)}
                   </text>
                 ),
               )}
             </g>
           );
         }
-        const iMax = maiorIndice(s.valores);
+        const iMax = maiorIndice(linha.valores);
         if (iMax === null) return null;
         return (
           <text
-            key={s.chave}
+            key={linha.chave}
             className="rotulo-valor"
             x={geo.xMeio(iMax)}
-            y={geo.y(s.valores[iMax]!) - 9}
+            y={geo.y(linha.valores[iMax]!) - 9}
             textAnchor="middle"
           >
-            {fmt(s.valores[iMax]!)}
+            {fmt(linha.valores[iMax]!)}
           </text>
         );
       })}

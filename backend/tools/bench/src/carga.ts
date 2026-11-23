@@ -727,7 +727,7 @@ if (modoPaginas) {
 const todosArquivos = fs
   .readdirSync(DIR)
   .filter(ehArquivoDeSnapshot)
-  .sort();
+  .sort((a, b) => a.localeCompare(b));
 const invalidos = arquivosPedidos.filter(
   (p) => !todosArquivos.some((f) => f === p || semSufixo(f) === semSufixo(p)),
 );

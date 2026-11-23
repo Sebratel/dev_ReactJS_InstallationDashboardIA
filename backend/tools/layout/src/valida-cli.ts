@@ -20,7 +20,7 @@ async function main(): Promise<void> {
   const idsPorPagina = new Map(dashboards.map((d) => [d.id, d.visuals.map((v) => v.id)]));
 
   let totalProblemas = 0;
-  for (const arquivo of fs.readdirSync(dirLayout).filter((f) => f.endsWith('.layout.yaml')).sort()) {
+  for (const arquivo of fs.readdirSync(dirLayout).filter((f) => f.endsWith('.layout.yaml')).sort((a, b) => a.localeCompare(b))) {
     const layout = carregaLayout(path.join(dirLayout, arquivo));
     const ids = idsPorPagina.get(layout.pagina);
     if (!ids) {

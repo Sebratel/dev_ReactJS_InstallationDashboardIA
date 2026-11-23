@@ -7,7 +7,7 @@
 // estilo — a classe muda quando o estilo muda, o gancho não.
 
 import type { ReactNode } from 'react';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 
 export type TomDeSelo = 'ok' | 'ruim' | 'neutro' | 'apagado';
 
@@ -23,7 +23,7 @@ export function Selo(props: { tom?: TomDeSelo; children: ReactNode }) {
   return (
     <span
       data-selo={tom}
-      className={cn(
+      className={juntarClasses(
         'inline-flex items-center gap-[5px] rounded-full border px-[9px] py-[3px]',
         'text-[0.66rem] font-bold whitespace-nowrap',
         TOM[tom],
@@ -47,7 +47,7 @@ const TOM_DE_STATUS: Record<TomDeStatus, string> = {
 export function BadgeDeStatus(props: { tom: TomDeStatus; children: ReactNode }) {
   return (
     <span
-      className={cn(
+      className={juntarClasses(
         'inline-flex items-center rounded-full border px-[8px] py-[1px]',
         'text-[0.64rem] font-bold tracking-[0.03em] uppercase',
         TOM_DE_STATUS[props.tom],

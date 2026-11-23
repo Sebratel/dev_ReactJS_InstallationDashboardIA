@@ -29,6 +29,9 @@ import { leGrupos, validaGrupos, type GrupoDeRefresh } from './grupos.ts';
 import { MEMORIA_PADRAO_MB, TEMPO_MAXIMO_GRUPO_PADRAO_MS, rodaGrupoAssincrono } from './executa-grupo.ts';
 import { iniciaSnapshotDiario, leHorarioUtc, queriesDoDiario } from './diario.ts';
 import { Agendador } from '../../../api/src/agendador.ts';
+import { geraEmProcesso } from '../../../api/src/geracao-em-processo.ts';
+import type { PedidoDeGeracao } from '../../../api/src/geracao-do-conjunto.ts';
+import { FilaDeBuscas } from '../../../api/src/periodos-ao-vivo.ts';
 import {
   descreveMortesDaApi,
   leHistorico,
@@ -193,16 +196,37 @@ export function configuracaoDoRefresh(env: NodeJS.ProcessEnv = process.env): Con
  * Docker este é o modo seguro: uma carga média congelada não descarta os disparos
  * do grupo quente, e uma suspensão do host aborta o filho e recupera a fila.
  */
-export function iniciaAgendadorPorGrupo(opts: Pick<DaemonOptions, 'raiz' | 'snapshotDir' | 'specsDir' | 'memoriaMb' | 'tempoMaximoMs'> = {}): Agendador {
+export function iniciaAgendadorPorGrupo(
+  opts: Pick<DaemonOptions, 'raiz' | 'snapshotDir' | 'specsDir' | 'memoriaMb' | 'tempoMaximoMs'> & {
+    fila?: FilaDeBuscas;
+  } = {},
+): Agendador {
   const raiz = opts.raiz ?? ROOT;
   applyDotEnv(raiz);
   const configuracao = configuracaoDoRefresh();
+  const memoriaMb = opts.memoriaMb ?? configuracao.memoriaMb;
+  const tempoMaximoMs = opts.tempoMaximoMs ?? configuracao.tempoMaximoMs;
+  const fila = opts.fila;
   const agendador = new Agendador({
     raiz,
     specsDir: opts.specsDir,
     snapshotDir: opts.snapshotDir ?? diretorioSnapshotPadrao(raiz),
-    memoriaMb: opts.memoriaMb ?? configuracao.memoriaMb,
-    tempoMaximoMs: opts.tempoMaximoMs ?? configuracao.tempoMaximoMs,
+    memoriaMb,
+    tempoMaximoMs,
+    // Quando há fila compartilhada (ex.: com `POST /ao-vivo`), nenhum grupo materializa
+    // em paralelo com um filho ao-vivo dentro do mesmo cgroup de 3 GiB do container.
+    ...(fila
+      ? {
+          roda: async (grupo, sinal) => {
+            await fila.vez();
+            try {
+              return await rodaGrupoAssincrono(raiz, grupo, { memoriaMb, tempoMaximoMs, sinal });
+            } finally {
+              fila.libera();
+            }
+          },
+        }
+      : {}),
   });
   agendador.inicia();
   return agendador;
@@ -494,13 +518,51 @@ CICLOS PULADOS: ${pulos.pulos} (último em ${pulos.ultimo})`);
       console.error('--por-grupo não combina com --sem-imediato, --so-uma-vez nem --intervalo');
       process.exit(2);
     }
-    const agendador = iniciaAgendadorPorGrupo();
+    // Uma única fila de 1 filho por vez para TODO o container `refresh`: grupos de
+    // materialização e buscas `POST /ao-vivo` nunca disputam o mesmo cgroup de 3 GiB.
+    const filaDeFilhos = new FilaDeBuscas(1);
+    const agendador = iniciaAgendadorPorGrupo({ fila: filaDeFilhos });
     const portaInterna = Number(process.env.REFRESH_PORT || 3102);
     const controleHttp = http.createServer((req, res) => {
       if (req.method === 'POST' && req.url === '/pede') {
         const disparados = ['quente', 'medio', 'frio'].filter((id) => agendador.pede(id));
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ ok: true, disparados }));
+        return;
+      }
+      if (req.method === 'POST' && req.url === '/ao-vivo') {
+        let bruto = '';
+        req.on('data', (chunk: Buffer | string) => {
+          bruto += String(chunk);
+        });
+        req.on('end', () => {
+          let pedido: PedidoDeGeracao;
+          try {
+            pedido = JSON.parse(bruto) as PedidoDeGeracao;
+          } catch {
+            res.writeHead(400, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, erro: 'JSON inválido em /ao-vivo' }));
+            return;
+          }
+          void (async () => {
+            await filaDeFilhos.vez();
+            try {
+              const r = await geraEmProcesso(ROOT, pedido);
+              res.writeHead(200, { 'content-type': 'application/json' });
+              res.end(JSON.stringify({ ok: true, protocolos: r.protocolos, picoMB: r.picoMB }));
+            } catch (err: unknown) {
+              res.writeHead(500, { 'content-type': 'application/json' });
+              res.end(
+                JSON.stringify({
+                  ok: false,
+                  erro: err instanceof Error ? err.message : String(err),
+                }),
+              );
+            } finally {
+              filaDeFilhos.libera();
+            }
+          })();
+        });
         return;
       }
       res.writeHead(404);

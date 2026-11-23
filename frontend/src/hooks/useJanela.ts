@@ -25,6 +25,7 @@ import {
   type VisualCalculado,
 } from '../services/dashboardService.ts';
 import { LINHAS_POR_JANELA } from '../utils/janela.ts';
+import { textoDoErro } from '../utils/erroDaTela.ts';
 
 export interface EstadoDeJanela {
   /** Os dados a desenhar: os da janela atual. */
@@ -32,6 +33,18 @@ export interface EstadoDeJanela {
   carregando: boolean;
   erro: string | null;
   vaiPara: (de: number) => void;
+}
+
+/**
+ * A identidade de uma ordenação, para entrar na chave do pedido.
+ *
+ * A ordem entra na identidade como o termo: trocar a coluna refaz o conjunto, e
+ * continuar na linha 4.000 mostraria uma janela de outra ordenação.
+ */
+function chaveDe(ordem: { coluna: number; desc: boolean } | null | undefined): string {
+  if (!ordem) return '';
+  const direcao = ordem.desc ? 'd' : 'a';
+  return `${ordem.coluna}:${direcao}`;
 }
 
 export function useJanela(
@@ -71,28 +84,28 @@ export function useJanela(
    */
   // A ordem entra na identidade do pedido como o termo: trocar a coluna refaz o
   // conjunto, e continuar na linha 4.000 mostraria uma janela de outra ordenação.
-  const chaveDaOrdem = ordem ? `${ordem.coluna}:${ordem.desc ? 'd' : 'a'}` : '';
+  const chaveDaOrdem = chaveDe(ordem);
   const [pedido, setPedido] = useState({ de: 0, inicial, termo, chaveDaOrdem });
   const valido =
     pedido.inicial === inicial && pedido.termo === termo && pedido.chaveDaOrdem === chaveDaOrdem;
   if (!valido) setPedido({ de: 0, inicial, termo, chaveDaOrdem });
-  const de = valido ? pedido.de : 0;
+  const inicio = valido ? pedido.de : 0;
 
   // A primeira janela sem busca e sem ordem É a resposta da página (`inicial`): não há o
   // que pedir. Com ordem, há: a primeira janela ordenada não é a primeira janela.
-  const precisa = de > 0 || termo !== '' || ordem !== null;
+  const precisa = inicio > 0 || termo !== '' || ordem !== null;
   const opcoes = {
     visual: inicial.id,
-    de,
+    de: inicio,
     linhas: LINHAS_POR_JANELA,
     busca: termo || undefined,
     ordem: ordem ?? undefined,
   };
-  const q = useQuery({
+  const visualAtual = useQuery({
     queryKey: chavesDeConsulta.pagina(pagina, urlDaPagina(pagina, filtros, opcoes, clicados)),
     queryFn: async ({ signal }) => {
-      const p = await pegaPagina(pagina, filtros, opcoes, signal, clicados);
-      const achado = p.visuais.find((v) => v.id === inicial.id);
+      const ponto = await pegaPagina(pagina, filtros, opcoes, signal, clicados);
+      const achado = ponto.visuais.find((visual) => visual.id === inicial.id);
       if (!achado) throw new Error('a resposta não trouxe este visual.');
       if (achado.erro) throw new Error(achado.erro);
       return achado;
@@ -104,13 +117,12 @@ export function useJanela(
 
   return {
     // Desligada, a consulta ainda traria o `placeholderData` da última janela pedida.
-    visual: precisa ? (q.data ?? inicial) : inicial,
-    carregando: precisa && q.isFetching,
-    erro:
-      precisa && q.error ? (q.error instanceof Error ? q.error.message : String(q.error)) : null,
+    visual: precisa ? (visualAtual.data ?? inicial) : inicial,
+    carregando: precisa && visualAtual.isFetching,
+    erro: precisa && visualAtual.error ? textoDoErro(visualAtual.error) : null,
     vaiPara: (novo: number) => {
       // Pedir de novo a janela que falhou é "tentar de novo": a chave não muda.
-      if (novo === de && q.isError) void q.refetch();
+      if (novo === inicio && visualAtual.isError) void visualAtual.refetch();
       else setPedido({ de: novo, inicial, termo, chaveDaOrdem });
     },
   };

@@ -9,7 +9,7 @@
 // Ninguém fora deste arquivo lê `import.meta.env`: um nome novo de variável entra aqui
 // e no `define`, e em nenhum outro lugar.
 
-const texto = (v: unknown): string => (typeof v === 'string' ? v : '');
+const texto = (valor: unknown): string => (typeof valor === 'string' ? valor : '');
 
 export const FIREBASE_CONFIG = {
   apiKey: texto(import.meta.env.VITE_FIREBASE_API_KEY),

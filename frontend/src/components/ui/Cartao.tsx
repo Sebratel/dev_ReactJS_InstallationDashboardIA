@@ -15,7 +15,7 @@ import { useContextoDaPagina } from '../../context/ContextoDaPagina.tsx';
 import { ehVisualComIaNaTela } from '../../services/iaService.ts';
 import { BotaoInsights } from '../ia/InsightsIA.tsx';
 import { alturaDoConteudo, type AlturaDeVisual } from '../../utils/alturaDoConteudo.ts';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 import { IdVisual } from './IdVisual.tsx';
 
 // `alturaDoConteudo`/`AlturaDeVisual` moraram aqui até esta linha; agora vêm de
@@ -27,7 +27,7 @@ export { alturaDoConteudo, type AlturaDeVisual };
  *  são o `.btn-exportar` do COM: pílula de contorno claro sobre a faixa bordô, que vira
  *  branca com a letra na primária no hover. O ícone é irmão do texto e a linha de base
  *  não os alinha — `inline-flex` centraliza os dois. */
-const ACOES = cn(
+const ACOES = juntarClasses(
   'flex flex-[0_0_auto] items-center gap-[6px] normal-case',
   // 17/11/2026: cantos retos e 22px, o `.btn-cab` da Manutenção (era pílula).
   '[&_:is(button,input)]:rounded-[4px] [&_:is(button,input)]:border-pbi-sobre-primary-fraco',
@@ -65,7 +65,7 @@ export function Cartao(props: {
   return (
     // A MOLDURA (`.cartao`, `.v-*`, `.cartao-corpo`) fica no `estilo.css`: é a conta de
     // altura que faz a tela caber, e `useAlturaMedida` a procura pela classe.
-    <section data-visual className={cn('cartao', altura, props.largo && 'largo')}>
+    <section data-visual className={juntarClasses('cartao', altura, props.largo && 'largo')}>
       {/* O cabeçalho do `.visual` da Manutenção (17/11/2026): faixa bordô com o título à
           ESQUERDA e as ações encostadas à direita; o subtítulo sai da faixa e vem logo
           abaixo dela, em texto discreto. Antes era tudo centralizado dentro da faixa, com
@@ -118,7 +118,7 @@ const CAIXA =
 export function Erro({ children }: { children: ReactNode }) {
   return (
     <div
-      className={cn(
+      className={juntarClasses(
         CAIXA,
         'border-pbi-critico border-l-pbi-critico bg-pbi-erro-bg whitespace-pre-wrap text-pbi-critico-texto',
       )}
@@ -132,7 +132,7 @@ export function Erro({ children }: { children: ReactNode }) {
 export function Aviso({ children }: { children: ReactNode }) {
   return (
     <div
-      className={cn(
+      className={juntarClasses(
         CAIXA,
         'border-pbi-gold-200 border-l-pbi-gold bg-pbi-aviso-bg text-pbi-gold-600',
       )}

@@ -28,7 +28,7 @@ function dedent(lines) {
   let min = Infinity;
   for (const l of nonEmpty) min = Math.min(min, depthOf(l));
   if (!Number.isFinite(min)) min = 0;
-  return lines.map((l) => (l.trim() === '' ? '' : l.slice(min))).join('\n').replace(/\s+$/, '');
+  return lines.map((l) => (l.trim() === '' ? '' : l.slice(min))).join('\n').trimEnd();
 }
 
 // Coleta linhas com depth > baseDepth a partir de startIdx (inclusive body).
@@ -130,7 +130,7 @@ function parseColumn(headerContent, bodyLines) {
   const col = { name };
   for (const raw of bodyLines) {
     const t = raw.trim();
-    const kv = t.match(/^(dataType|formatString|summarizeBy|sourceColumn|isHidden|dataCategory|sortByColumn):\s*(.+)$/);
+    const kv = t.match(/^(dataType|formatString|summarizeBy|sourceColumn|isHidden|dataCategory|sortByColumn):\s*(\S.*)$/);
     if (kv) col[kv[1]] = kv[2].trim();
   }
   if (inlineExpr !== null) {
@@ -153,7 +153,7 @@ function parseMeasure(headerContent, bodyLines) {
 
   const props = {};
   for (const raw of bodyLines) {
-    const kv = raw.trim().match(/^(formatString|displayFolder):\s*(.+)$/);
+    const kv = raw.trim().match(/^(formatString|displayFolder):\s*(\S.*)$/);
     if (kv) props[kv[1]] = kv[2].trim();
   }
 
@@ -173,7 +173,7 @@ function parsePartition(headerContent, bodyLines) {
   // encontra `source =` e coleta o corpo mais profundo como M
   for (let i = 0; i < bodyLines.length; i++) {
     const t = bodyLines[i].trim();
-    const modeKv = t.match(/^mode:\s*(.+)$/);
+    const modeKv = t.match(/^mode:\s*(\S.*)$/);
     if (modeKv) partition.mode = modeKv[1].trim();
     if (/^source\s*=/.test(t)) {
       const srcDepth = depthOf(bodyLines[i]);
@@ -234,7 +234,7 @@ export function parseTmdlTable(text) {
       const { nextIdx } = collectDeeper(lines, i + 1, 1);
       i = nextIdx;
     } else {
-      const kv = content.match(/^(isHidden|showAsVariationsOnly|lineageTag):\s*(.+)$/);
+      const kv = content.match(/^(isHidden|showAsVariationsOnly|lineageTag):\s*(\S.*)$/);
       if (kv) table.properties[kv[1]] = kv[2].trim();
       i += 1;
     }
@@ -271,7 +271,7 @@ export function parseColumnRef(text) {
 }
 
 const REL_PROP_RE =
-  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(.+)$/;
+  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(\S.*)$/;
 
 export function parseTmdlRelationships(text) {
   const lines = text.split(/\r?\n/);
@@ -342,7 +342,7 @@ export function parseColumnRef(text) {
 }
 
 const REL_PROP_RE =
-  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(.+)$/;
+  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(\S.*)$/;
 
 export function parseTmdlRelationships(text) {
   const lines = text.split(/\r?\n/);
@@ -413,7 +413,7 @@ export function parseColumnRef(text) {
 }
 
 const REL_PROP_RE =
-  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(.+)$/;
+  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(\S.*)$/;
 
 export function parseTmdlRelationships(text) {
   const lines = text.split(/\r?\n/);
@@ -484,7 +484,7 @@ export function parseColumnRef(text) {
 }
 
 const REL_PROP_RE =
-  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(.+)$/;
+  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(\S.*)$/;
 
 export function parseTmdlRelationships(text) {
   const lines = text.split(/\r?\n/);
@@ -555,7 +555,7 @@ export function parseColumnRef(text) {
 }
 
 const REL_PROP_RE =
-  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(.+)$/;
+  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(\S.*)$/;
 
 export function parseTmdlRelationships(text) {
   const lines = text.split(/\r?\n/);
@@ -626,7 +626,7 @@ export function parseColumnRef(text) {
 }
 
 const REL_PROP_RE =
-  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(.+)$/;
+  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(\S.*)$/;
 
 export function parseTmdlRelationships(text) {
   const lines = text.split(/\r?\n/);
@@ -697,7 +697,7 @@ export function parseColumnRef(text) {
 }
 
 const REL_PROP_RE =
-  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(.+)$/;
+  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(\S.*)$/;
 
 export function parseTmdlRelationships(text) {
   const lines = text.split(/\r?\n/);
@@ -768,7 +768,7 @@ export function parseColumnRef(text) {
 }
 
 const REL_PROP_RE =
-  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(.+)$/;
+  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(\S.*)$/;
 
 export function parseTmdlRelationships(text) {
   const lines = text.split(/\r?\n/);

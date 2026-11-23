@@ -30,12 +30,12 @@ export function assinaEventos(
   const conecta = (): void => {
     if (encerrado) return;
     limpaTimer();
-    const es = new EventSource('/api/eventos');
-    esAtual = es;
+    const fonteEventos = new EventSource('/api/eventos');
+    esAtual = fonteEventos;
 
-    if (aoMudarAcesso) es.addEventListener('acessos', () => aoMudarAcesso());
+    if (aoMudarAcesso) fonteEventos.addEventListener('acessos', () => aoMudarAcesso());
 
-    es.onopen = () => {
+    fonteEventos.onopen = () => {
       tentativas = 0;
       if (jaAbriuAntes && caiuAposAbrir) {
         caiuAposAbrir = false;
@@ -44,10 +44,10 @@ export function assinaEventos(
       jaAbriuAntes = true;
     };
 
-    es.onmessage = (ev) => {
+    fonteEventos.onmessage = (evento) => {
       let corpo: { dashboards?: unknown };
       try {
-        corpo = JSON.parse(ev.data as string);
+        corpo = JSON.parse(evento.data as string);
       } catch {
         return; // linha de comentário SSE (`: conectado`) não chega aqui — só `data:`.
       }
@@ -55,14 +55,14 @@ export function assinaEventos(
       if (afetados.length > 0) aoMudar(afetados);
     };
 
-    es.onerror = () => {
+    fonteEventos.onerror = () => {
       if (encerrado) return;
       if (jaAbriuAntes) caiuAposAbrir = true;
       // Pela especificação HTML5 do EventSource, respostas HTTP não-200 (como 502/503/504
       // do Nginx durante um restart do contêiner da API) mudam readyState para CLOSED (2)
       // e o navegador NUNCA mais tenta reconectar sozinho. Reabrimos com backoff exponencial.
-      if (es.readyState === (EventSource.CLOSED ?? 2)) {
-        es.close();
+      if (fonteEventos.readyState === (EventSource.CLOSED ?? 2)) {
+        fonteEventos.close();
         if (timerReconexao !== null) return;
         const atraso = Math.min(
           ATRASO_BASE_RECONEXAO_MS * 2 ** tentativas,

@@ -42,7 +42,11 @@ test('a carga da madrugada cobre toda query do refresh.yaml real, sem repetiçã
   for (const q of ['protocolos-geral', 'protocolos-produtividade', 'contratos', 'troca-endereco', 'relatos-do-dia', 'valores-do-relato']) {
     assert.ok(queries.includes(q), q);
   }
-  assert.ok(queries.includes('field-agenda'), 'a agenda completa voltou ao refresh');
+  // A `field-agenda` NÃO entra nesta lista fixa: ela está no refresh se e só se
+  // `completa_no_snapshot` disser que sim, e quem cobra esse par é
+  // `completa-no-snapshot.test.ts`. Afirmá-la aqui prendeu este teste ao valor vigente
+  // da chave e o fez falhar quando ela voltou para `false` (ACHADOS #272) — sem que a
+  // carga da madrugada, que é o assunto deste teste, tivesse mudado em nada.
 });
 
 test('argumentos: os mesmos do antigo crontab (heap do filho, --refazer, --memoria)', () => {

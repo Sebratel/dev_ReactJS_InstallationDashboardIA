@@ -71,6 +71,36 @@ function cauda(bruto: string): string {
 }
 
 /**
+ * Delega a geração ao vivo para o container `refresh` (`POST /ao-vivo`), tirando o pico
+ * de ~1 GB do processo filho de dentro do cgroup da `api`.
+ *
+ * Os dois containers compartilham o volume `api-runtime:/repo/runtime`, então o `refresh`
+ * grava exatamente no `pedido.dir` que a `api` vai ler logo em seguida.
+ */
+export async function geraNoRefresh(
+  refreshUrl: string,
+  pedido: PedidoDeGeracao,
+  o: { tempoMaximoMs?: number } = {},
+): Promise<ResultadoDaGeracao> {
+  let baseRefresh = refreshUrl;
+  while (baseRefresh.endsWith('/')) baseRefresh = baseRefresh.slice(0, -1);
+  const url = `${baseRefresh}/ao-vivo`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(pedido),
+    signal: AbortSignal.timeout(o.tempoMaximoMs ?? TEMPO_MAXIMO_DO_FILHO_MS),
+  });
+  const corpo = (await res.json().catch(() => null)) as
+    | { ok?: boolean; protocolos?: number; picoMB?: number; erro?: string }
+    | null;
+  if (!res.ok || !corpo?.ok || typeof corpo.protocolos !== 'number') {
+    throw new Error(corpo?.erro || `refresh /ao-vivo respondeu HTTP ${res.status}`);
+  }
+  return { protocolos: corpo.protocolos, picoMB: corpo.picoMB ?? 0 };
+}
+
+/**
  * Roda a geração num filho e resolve com o que ele trouxe. Rejeita com a cauda da saída
  * de erro quando ele sai com código ≠ 0, é morto pelo prazo, ou não sobe.
  */

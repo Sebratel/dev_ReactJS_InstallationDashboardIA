@@ -34,6 +34,16 @@ import { AcoesDoDialogo, Dialogo } from '../ui/Dialogo.tsx';
 import { Nota } from '../ui/Nota.tsx';
 import { GatilhoDoFiltro } from './GatilhoDoFiltro.tsx';
 
+/**
+ * O que o gatilho do filtro mostra: "todos", o próprio valor quando é um só, ou a
+ * contagem. Mostrar o valor sozinho é o que deixa a barra legível num print.
+ */
+function resumoDaSelecao(selecao: readonly Valor[], tipo: TipoDeValor): string {
+  if (selecao.length === 0) return 'todos';
+  if (selecao.length === 1) return rotulo(selecao[0]!, tipo);
+  return `${selecao.length} selecionados`;
+}
+
 export function Segmentacao(props: {
   pagina: string;
   spec: SegmentacaoSpec;
@@ -55,27 +65,26 @@ export function Segmentacao(props: {
   const carregando = opcoes === null && erro === null;
 
   /** A seleção depois de clicar em `v` — a mesma conta para o clique e para a previsão. */
-  function proxima(v: Valor): Valor[] {
-    const marcado = props.selecao.some((x) => mesmoValor(x, v));
-    return marcado ? props.selecao.filter((x) => !mesmoValor(x, v)) : [...props.selecao, v];
+  function proxima(valor: Valor): Valor[] {
+    const marcado = props.selecao.some((selecionado) => mesmoValor(selecionado, valor));
+    return marcado
+      ? props.selecao.filter((selecionado) => !mesmoValor(selecionado, valor))
+      : [...props.selecao, valor];
   }
 
-  function alterna(v: Valor): void {
-    props.aoMudar(proxima(v));
+  function alterna(valor: Valor): void {
+    props.aoMudar(proxima(valor));
   }
 
-  const visiveis = (opcoes ?? []).filter((o) =>
-    busca === '' ? true : rotulo(o.valor, o.tipo).toLowerCase().includes(busca.toLowerCase()),
+  const visiveis = (opcoes ?? []).filter((opcao) =>
+    busca === ''
+      ? true
+      : rotulo(opcao.valor, opcao.tipo).toLowerCase().includes(busca.toLowerCase()),
   );
 
-  const tipoDaColuna: TipoDeValor = opcoes?.find((o) => o.tipo !== null)?.tipo ?? null;
+  const tipoDaColuna: TipoDeValor = opcoes?.find((opcao) => opcao.tipo !== null)?.tipo ?? null;
 
-  const resumo =
-    props.selecao.length === 0
-      ? 'todos'
-      : props.selecao.length === 1
-        ? rotulo(props.selecao[0]!, tipoDaColuna)
-        : `${props.selecao.length} selecionados`;
+  const resumo = resumoDaSelecao(props.selecao, tipoDaColuna);
 
   return (
     <GatilhoDoFiltro
@@ -100,7 +109,9 @@ export function Segmentacao(props: {
                 <Botao
                   variante="secundario"
                   onClick={() =>
-                    props.aoMudar([...new Set([...props.selecao, ...visiveis.map((o) => o.valor)])])
+                    props.aoMudar([
+                      ...new Set([...props.selecao, ...visiveis.map((opcao) => opcao.valor)]),
+                    ])
                   }
                   disabled={visiveis.length === 0}
                 >
@@ -131,21 +142,22 @@ export function Segmentacao(props: {
                 className="w-full"
                 placeholder="Filtrar opções…"
                 value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                autoFocus
+                onChange={(evento) => setBusca(evento.target.value)}
               />
               {visiveis.length === 0 ? (
                 <Nota>Nenhum resultado para esta busca.</Nota>
               ) : (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-[2px]">
-                  {visiveis.map((o, i) => {
-                    const marcado = props.selecao.some((x) => mesmoValor(x, o.valor));
-                    const f = formata(o.valor, o.tipo);
+                  {visiveis.map((opcao, indice) => {
+                    const marcado = props.selecao.some((selecionado) =>
+                      mesmoValor(selecionado, opcao.valor),
+                    );
+                    const formatado = formata(opcao.valor, opcao.tipo);
                     return (
                       <label
-                        key={i}
+                        key={indice}
                         className="flex cursor-pointer items-center gap-[8px] rounded-[2px] px-[8px] py-[5px] text-[0.74rem] hover:bg-pbi-primary-soft"
-                        onMouseEnter={() => props.aoPrever?.(proxima(o.valor))}
+                        onMouseEnter={() => props.aoPrever?.(proxima(opcao.valor))}
                       >
                         {/* `accent-color` pinta o PREENCHIMENTO da caixa: a primária é
                             fundo, não letra — o navegador escolhe o visto com contraste. */}
@@ -153,10 +165,10 @@ export function Segmentacao(props: {
                           type="checkbox"
                           className="w-auto p-0 accent-pbi-primary"
                           checked={marcado}
-                          onChange={() => alterna(o.valor)}
+                          onChange={() => alterna(opcao.valor)}
                         />
-                        <span className={o.valor === null ? 'text-pbi-neutro italic' : ''}>
-                          {o.valor === null ? '(vazio)' : f.texto}
+                        <span className={opcao.valor === null ? 'text-pbi-neutro italic' : ''}>
+                          {opcao.valor === null ? '(vazio)' : formatado.texto}
                         </span>
                       </label>
                     );
@@ -171,10 +183,10 @@ export function Segmentacao(props: {
   );
 }
 
-function rotulo(v: Valor, tipo: TipoDeValor): string {
-  return v === null ? '(vazio)' : formata(v, tipo).texto;
+function rotulo(valor: Valor, tipo: TipoDeValor): string {
+  return valor === null ? '(vazio)' : formata(valor, tipo).texto;
 }
 
-function mesmoValor(a: Valor, b: Valor): boolean {
-  return a === b;
+function mesmoValor(alvo: Valor, segundo: Valor): boolean {
+  return alvo === segundo;
 }

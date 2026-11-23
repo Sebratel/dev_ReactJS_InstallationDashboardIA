@@ -3,7 +3,24 @@
 
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import { ResponsiveContainer } from 'recharts';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
+
+/**
+ * A classe do delta: `sobe` quando a variação vai para o lado bom, `desce` para o ruim,
+ * vazio quando não variou. Qual lado é o bom vem de `deltaBom` — retrabalho que sobe é
+ * ruim, ativação que sobe é boa.
+ */
+function sentidoDoDelta(delta: number, subirEhBom: boolean): string {
+  if (delta === 0) return '';
+  return delta > 0 === subirEhBom ? 'sobe' : 'desce';
+}
+
+/** A seta que acompanha o número do delta. */
+function setaDoDelta(delta: number): string {
+  if (delta > 0) return '↑';
+  if (delta < 0) return '↓';
+  return '→';
+}
 
 export function Kpi(props: {
   rotulo: string;
@@ -20,10 +37,9 @@ export function Kpi(props: {
 }) {
   const { delta } = props;
   const temDelta = delta !== null && delta !== undefined && Number.isFinite(delta);
-  const sentido =
-    !temDelta || delta === 0 ? '' : delta > 0 === (props.deltaBom ?? true) ? 'sobe' : 'desce';
+  const sentido = temDelta ? sentidoDoDelta(delta, props.deltaBom ?? true) : '';
   return (
-    <div className={cn('ins-kpi', props.destaque && 'destaque')} title={props.title}>
+    <div className={juntarClasses('ins-kpi', props.destaque && 'destaque')} title={props.title}>
       <span className="ins-kpi-rotulo">{props.rotulo}</span>
       <span className="ins-kpi-linha">
         <span className="ins-kpi-valor">
@@ -31,8 +47,8 @@ export function Kpi(props: {
           {props.unidade ? <small>{props.unidade}</small> : null}
         </span>
         {temDelta ? (
-          <span className={cn('ins-delta', sentido)}>
-            {delta > 0 ? '↑' : delta < 0 ? '↓' : '→'} {Math.abs(delta * 100).toFixed(0)}%
+          <span className={juntarClasses('ins-delta', sentido)}>
+            {setaDoDelta(delta)} {Math.abs(delta * 100).toFixed(0)}%
           </span>
         ) : null}
       </span>
@@ -51,13 +67,17 @@ export interface ItemDeLegenda {
 export function Legenda({ itens }: { itens: readonly ItemDeLegenda[] }) {
   return (
     <div className="ins-legenda">
-      {itens.map((i) => (
-        <span key={i.rotulo}>
+      {itens.map((indice) => (
+        <span key={indice.rotulo}>
           <i
-            className={i.forma}
-            style={i.forma === 'tracejada' ? { borderColor: i.cor } : { background: i.cor }}
+            className={indice.forma}
+            style={
+              indice.forma === 'tracejada'
+                ? { borderColor: indice.cor }
+                : { background: indice.cor }
+            }
           />
-          {i.rotulo}
+          {indice.rotulo}
         </span>
       ))}
     </div>
@@ -73,11 +93,11 @@ export function Dica(props: {
     <div className="ins-dica">
       {props.titulo ? <b>{props.titulo}</b> : null}
       {props.linhas
-        .filter((l): l is [string, string] => Boolean(l))
-        .map(([r, v]) => (
-          <div key={r}>
-            <span>{r}</span>
-            <span>{v}</span>
+        .filter((linha): linha is [string, string] => Boolean(linha))
+        .map(([registro, valor]) => (
+          <div key={registro}>
+            <span>{registro}</span>
+            <span>{valor}</span>
           </div>
         ))}
     </div>
@@ -112,8 +132,8 @@ export function Paginador(props: {
 }) {
   const paginas = Math.max(1, Math.ceil(props.total / props.porPagina));
   if (paginas <= 1) return null;
-  const de = props.pagina * props.porPagina + 1;
-  const ate = Math.min(props.total, de + props.porPagina - 1);
+  const inicio = props.pagina * props.porPagina + 1;
+  const ate = Math.min(props.total, inicio + props.porPagina - 1);
   return (
     <span className="ins-pagina" role="group" aria-label="Página do gráfico">
       <button
@@ -125,7 +145,7 @@ export function Paginador(props: {
         ‹
       </button>
       <span>
-        {de}–{ate} de {props.total}
+        {inicio}–{ate} de {props.total}
       </span>
       <button
         type="button"
@@ -140,4 +160,5 @@ export function Paginador(props: {
 }
 
 /** Valor numérico de uma prop do Recharts (que tipa x/y/largura como `number | string`). */
-export const n = (v: unknown): number => (typeof v === 'number' ? v : Number(v ?? 0));
+export const numero = (valor: unknown): number =>
+  typeof valor === 'number' ? valor : Number(valor ?? 0);

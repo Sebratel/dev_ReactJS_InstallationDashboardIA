@@ -58,6 +58,7 @@ test('trava: PID morto no MESMO host é tomada na hora, sem esperar o batimento 
     JSON.stringify({ pid: morto, host: 'esta-maquina', desde: 'x', comando: 'caiu' }),
   );
   const t = await adquireTrava(dir, { ...silencio, comando: 'novo', host: 'esta-maquina', esperaMaxMs: 50 });
+  assert.equal(t.herdada, false);
   t.solta();
 });
 

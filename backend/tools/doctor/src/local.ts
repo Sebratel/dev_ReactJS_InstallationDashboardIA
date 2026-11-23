@@ -103,8 +103,27 @@ export function checaPortas(portas: readonly number[] = PORTAS): Achado[] {
   });
 }
 
+function resolveGit(): string | null {
+  const candidatos =
+    process.platform === 'win32'
+      ? [
+          `${process.env.ProgramFiles || 'C:\\Program Files'}\\Git\\cmd\\git.exe`,
+          `${process.env.LOCALAPPDATA || ''}\\Programs\\Git\\cmd\\git.exe`,
+          'C:\\Program Files (x86)\\Git\\cmd\\git.exe',
+        ]
+      : ['/usr/bin/git', '/usr/local/bin/git', '/opt/homebrew/bin/git'];
+  for (const c of candidatos) {
+    if (c && fs.existsSync(c)) return c;
+  }
+  return null;
+}
+
 export function checaArvore(root: string): Achado {
-  const r = spawnSync('git', ['status', '--short'], {
+  const gitBin = resolveGit();
+  if (!gitBin) {
+    return { estado: 'ok', rotulo: 'árvore', detalhe: 'não é repositório git (ou git indisponível)' };
+  }
+  const r = spawnSync(gitBin, ['status', '--short'], {
     cwd: root, encoding: 'utf8', timeout: 15_000,
   });
   if (r.status !== 0 || typeof r.stdout !== 'string') {
