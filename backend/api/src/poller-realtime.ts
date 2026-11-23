@@ -874,9 +874,9 @@ export class PollerRealtime {
       }
       for (const cfg of this.#configs.values()) {
         if (!cfg.sentinela) continue;
-        // Volta que começou antes desta resposta pode não ter visto a tarefa: roda de novo.
+        // Volta que começou antes (ou no mesmo ms) desta resposta pode não ter visto a tarefa: roda de novo.
         const inicio = this.#inicioDaVolta.get(cfg.query) ?? -Infinity;
-        if ((acordar.has(cfg.query) || !estavaEmDia) && inicio < fim) this.#pendentes.add(cfg.query);
+        if ((acordar.has(cfg.query) || !estavaEmDia) && inicio <= fim) this.#pendentes.add(cfg.query);
       }
       this.#sentinelaDesde = new Date(marca - s.margemSegundos * 1000);
       for (const [id, mod] of this.#vistas) if (mod < this.#sentinelaDesde.getTime()) this.#vistas.delete(id);
