@@ -121,18 +121,21 @@ export function ConteudoDoRelatorio({
       />
 
       {/* O `div` existe para medir: é dele que sai `--h-antes`, a distância do topo do
-          conteúdo até o primeiro card. Ele não tem estilo — a grade continua sendo a do
-          `VisualGridSection`. */}
+          conteúdo até o primeiro card. Só montamos a grade depois que `paginaCalculada`
+          chega — antes disso `visuais` está vazio e todos os cartões cairiam em
+          `VisualNaDobra`, disparando uma rajada de pedidos paralelos à abertura. */}
       <div ref={refDoEspacoAntesDosVisuais}>
-        <VisualGridSection
-          pagina={abaAberta}
-          layout={layout}
-          visuais={visuais}
-          filtros={filtros}
-          clicados={clicados}
-          aoFiltrar={aoFiltrarAlvos}
-          aoPrever={aoPreverAlvos}
-        />
+        {paginaCalculada !== null ? (
+          <VisualGridSection
+            pagina={abaAberta}
+            layout={layout}
+            visuais={visuais}
+            filtros={filtros}
+            clicados={clicados}
+            aoFiltrar={aoFiltrarAlvos}
+            aoPrever={aoPreverAlvos}
+          />
+        ) : null}
       </div>
 
       {nenhumVisualTemNumero ? (
