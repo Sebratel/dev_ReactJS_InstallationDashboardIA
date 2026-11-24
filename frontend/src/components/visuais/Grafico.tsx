@@ -42,7 +42,9 @@ import {
 } from '../../utils/graficoRotulos.ts';
 import { DesenhoDoGrafico } from './grafico/DesenhoDoGrafico.tsx';
 import { LegendaDoGrafico } from './grafico/LegendaDoGrafico.tsx';
+import { TooltipDoGrafico } from './TooltipDoGrafico.tsx';
 import { MensagemDeEstado } from '../ui/Estado.tsx';
+import { montaTooltipDeCategoria, type PosicaoDoPonteiro } from '../../utils/graficoTooltip.ts';
 
 /** Abaixo de 4 categorias por página o gráfico deixa de comunicar tendência. */
 const MINIMO_POR_PAGINA = 4;
@@ -80,6 +82,7 @@ export function Grafico({
   // TODOS os hooks vêm ANTES de qualquer `return`: um guarda de nulo acima de um hook
   // muda a ORDEM DOS HOOKS entre renderizações, e o React derruba a árvore.
   const [inicio, setInicio] = useState<number | null>(null);
+  const [posPonteiro, setPosPonteiro] = useState<PosicaoDoPonteiro | null>(null);
   const [caixaRef, caixa] = useCaixa();
 
   const dadosDoGrafico = visual.dados as DadosDeGrafico | undefined;
@@ -247,6 +250,23 @@ export function Grafico({
     );
   }
 
+  const tipoPrincipal = dadosDoGrafico.tiposDeSerie[0] ?? null;
+  const casasPrincipais = dadosDoGrafico.casasDasSeries?.[0] ?? null;
+  const dadosTooltip =
+    clique.sob !== null && grafico.categorias[clique.sob]
+      ? montaTooltipDeCategoria({
+          rotulo: grafico.categorias[clique.sob]!.rotulo,
+          series: grafico.series,
+          indice: clique.sob,
+          empilha: grafico.empilha,
+          percentual: grafico.percentual,
+          tipo: tipoPrincipal,
+          casas: casasPrincipais,
+          podeClicar: clique.podeClicar(clique.sob),
+          maxReferencia: grafico.series.length === 1 ? maiorValorDe(gTudo.series, 0) : undefined,
+        })
+      : null;
+
   return (
     <Cartao
       titulo={titulo}
@@ -265,7 +285,15 @@ export function Grafico({
 
       {/* A caixa do desenho é este div, e o `<svg>` recebe exatamente a medida dela.
           `overflow: hidden` é deliberado: gráfico NÃO rola; se não cabe, ele pagina. */}
-      <div className="caixa-grafico" ref={caixaRef}>
+      <div
+        className="caixa-grafico"
+        ref={caixaRef}
+        onMouseMove={(evento) => setPosPonteiro({ x: evento.clientX, y: evento.clientY })}
+        onMouseLeave={() => {
+          setPosPonteiro(null);
+          clique.aoSair();
+        }}
+      >
         <DesenhoDoGrafico
           largura={caixa.w}
           altura={caixa.h}
@@ -280,8 +308,8 @@ export function Grafico({
           empilha={grafico.empilha}
           percentual={grafico.percentual}
           naFaceta={naFaceta}
-          tipo={dadosDoGrafico.tiposDeSerie[0] ?? null}
-          casas={dadosDoGrafico.casasDasSeries?.[0] ?? null}
+          tipo={tipoPrincipal}
+          casas={casasPrincipais}
           marcas={marcas}
           geo={geo}
           interacao={clique}
@@ -289,6 +317,7 @@ export function Grafico({
           rotulosDeLinha={rotulosDeLinha}
         />
       </div>
+      <TooltipDoGrafico dados={dadosTooltip} pos={posPonteiro} />
     </Cartao>
   );
 }

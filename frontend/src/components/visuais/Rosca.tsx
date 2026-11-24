@@ -10,15 +10,17 @@
 // (`VisualGridSection.tsx`). O tipo original do PBIP fica registrado ao lado, em
 // `improvements:`, com `numero_muda: false`: o número é idêntico ao da tabela que saiu.
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { DadosDeTabela, VisualCalculado } from '../../services/dashboardService.ts';
 import { formata, inteiro } from '../../utils/formato.ts';
 import { corDaSerie, corNoTema } from '../../utils/graficoForma.ts';
+import { montaTooltipDeRosca, type PosicaoDoPonteiro } from '../../utils/graficoTooltip.ts';
 import { useThemeStore } from '../../store/themeStore.ts';
 import { tituloDeTabela } from '../../utils/rotulos.ts';
 import { Cartao } from '../ui/Cartao.tsx';
 import { useCaixa } from '../../hooks/useCaixa.ts';
 import { MensagemDeEstado } from '../ui/Estado.tsx';
+import { TooltipDoGrafico } from './TooltipDoGrafico.tsx';
 
 /** A faixa da rosca, fração do raio externo. 0 seria pizza cheia; perto de 1, ela some. */
 const ESPESSURA = 0.34;
@@ -34,6 +36,8 @@ interface Fatia {
 export function Rosca({ visual }: { visual: VisualCalculado }) {
   const { isDark } = useThemeStore();
   const [caixaRef, caixa] = useCaixa();
+  const [sob, setSob] = useState<number | null>(null);
+  const [posPonteiro, setPosPonteiro] = useState<PosicaoDoPonteiro | null>(null);
 
   const dadosDaTabela = visual.dados as DadosDeTabela | undefined;
 
@@ -90,6 +94,16 @@ export function Rosca({ visual }: { visual: VisualCalculado }) {
   // precisa saber quanto já foi desenhado antes dela.
   const acumulado = { valor: 0 };
 
+  const fatiaAtiva = sob !== null ? (fatias[sob] ?? null) : null;
+  const dadosTooltip = fatiaAtiva
+    ? montaTooltipDeRosca({
+        rotulo: fatiaAtiva.rotulo,
+        valor: fatiaAtiva.valor,
+        cor: fatiaAtiva.cor,
+        total,
+      })
+    : null;
+
   return (
     <Cartao titulo={titulo} id={visual.id} altura="tabela">
       <div className="legenda">
@@ -102,7 +116,15 @@ export function Rosca({ visual }: { visual: VisualCalculado }) {
           </span>
         ))}
       </div>
-      <div className="caixa-grafico" ref={caixaRef}>
+      <div
+        className="caixa-grafico"
+        ref={caixaRef}
+        onMouseMove={(evento) => setPosPonteiro({ x: evento.clientX, y: evento.clientY })}
+        onMouseLeave={() => {
+          setSob(null);
+          setPosPonteiro(null);
+        }}
+      >
         <svg
           className="grafico-svg"
           width={caixa.w}
@@ -111,24 +133,27 @@ export function Rosca({ visual }: { visual: VisualCalculado }) {
           aria-label={`${titulo}: total ${inteiro(total)}, ${fatias.length} categoria(s)`}
         >
           <g transform={`rotate(-90 ${centroX} ${centroY})`}>
-            {fatias.map((fatia) => {
+            {fatias.map((fatia, indice) => {
               const comprimento = (fatia.valor / total) * circunferencia;
               const deslocamento = -((acumulado.valor / total) * circunferencia);
               acumulado.valor += fatia.valor;
+              const ativa = sob === indice;
               return (
                 <circle
                   key={fatia.rotulo}
+                  className="rosca-fatia"
                   cx={centroX}
                   cy={centroY}
                   r={raioMedio}
                   fill="none"
                   stroke={fatia.cor}
-                  strokeWidth={espessuraTraco}
+                  strokeWidth={ativa ? espessuraTraco + 3 : espessuraTraco}
+                  opacity={sob !== null && !ativa ? 0.55 : 1}
                   strokeDasharray={`${comprimento} ${Math.max(0, circunferencia - comprimento)}`}
                   strokeDashoffset={deslocamento}
-                >
-                  <title>{`${fatia.rotulo}: ${inteiro(fatia.valor)} (${((fatia.valor / total) * 100).toFixed(0)}%)`}</title>
-                </circle>
+                  onMouseEnter={() => setSob(indice)}
+                  onMouseLeave={() => setSob(null)}
+                />
               );
             })}
           </g>
@@ -140,6 +165,7 @@ export function Rosca({ visual }: { visual: VisualCalculado }) {
           </text>
         </svg>
       </div>
+      <TooltipDoGrafico dados={dadosTooltip} pos={posPonteiro} />
     </Cartao>
   );
 }

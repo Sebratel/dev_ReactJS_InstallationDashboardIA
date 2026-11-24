@@ -93,6 +93,7 @@ export function usePaginaAberta(
   return useQuery({
     queryKey: consulta?.queryKey ?? chavesDeConsulta.pagina('', ''),
     queryFn: consulta?.queryFn ?? (() => Promise.reject(new Error('sem página'))),
+    meta: consulta?.meta,
     enabled: consulta !== null,
     placeholderData: keepPreviousData,
   });

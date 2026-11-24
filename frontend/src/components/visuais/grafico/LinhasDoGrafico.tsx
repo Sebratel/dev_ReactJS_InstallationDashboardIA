@@ -8,7 +8,6 @@ import type { Geometria } from './geometria.ts';
 
 export function LinhasDoGrafico(props: {
   linhas: readonly SerieDesenhada[];
-  categorias: readonly { rotulo: string }[];
   geo: Geometria;
   /**
    * As casas que o `format` da medida pede. Sem elas o número da linha saía SEMPRE
@@ -28,7 +27,7 @@ export function LinhasDoGrafico(props: {
    */
   todosOsPontos?: boolean;
 }) {
-  const { linhas, categorias, geo } = props;
+  const { linhas, geo } = props;
   const todos = props.todosOsPontos === true;
   const fmt = (valor: number): string =>
     props.casas === undefined || props.casas === null
@@ -37,7 +36,7 @@ export function LinhasDoGrafico(props: {
   return (
     <>
       {linhas.map((linha) => (
-        <g key={linha.chave}>
+        <g key={linha.chave} pointerEvents="none">
           <path
             className="linha-serie"
             d={caminhoDaSerie(linha.valores, geo.xMeio, geo.y)}
@@ -52,9 +51,7 @@ export function LinhasDoGrafico(props: {
                 cy={geo.y(valor)}
                 r={4}
                 fill={linha.cor}
-              >
-                <title>{`${categorias[indice]?.rotulo ?? ''} · ${linha.nome}: ${fmt(valor)}`}</title>
-              </circle>
+              />
             ),
           )}
         </g>

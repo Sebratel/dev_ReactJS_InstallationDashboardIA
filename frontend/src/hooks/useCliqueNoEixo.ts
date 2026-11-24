@@ -17,6 +17,8 @@ import type { AoFiltrar } from '../utils/rota.ts';
 export interface InteracaoDoGrafico {
   /** A categoria sob o mouse, ou `null`. */
   sob: number | null;
+  /** Se o clique nesta categoria dispara filtro cruzado. */
+  podeClicar: (i: number) => boolean;
   /** `col-grupo`, mais `clicavel` onde o clique filtra e `apagada` fora da seleção. */
   classeDa: (i: number) => string;
   aoEntrar: (i: number) => void;
@@ -62,6 +64,7 @@ export function useCliqueNoEixo(
 
   return {
     sob,
+    podeClicar,
     classeDa: (indice) =>
       'col-grupo' +
       (podeClicar(indice) ? ' clicavel' : '') +

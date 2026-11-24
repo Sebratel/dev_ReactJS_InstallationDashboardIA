@@ -84,7 +84,6 @@ export function DesenhoDoGrafico(props: {
       />
       <LinhasDoGrafico
         linhas={props.naFaceta ? [] : props.linhas}
-        categorias={categorias}
         geo={geo}
         casas={props.casas}
         todosOsPontos={props.rotulosDeLinha}

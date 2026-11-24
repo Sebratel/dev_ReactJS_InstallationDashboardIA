@@ -1107,6 +1107,132 @@ table.dados.matriz td:first-child {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+.rosca-fatia {
+  transition:
+    stroke-width 0.14s ease,
+    opacity 0.14s ease;
+}
+
+/* Tooltip flutuante rico dos gráficos (mini-barras proporcionais + dica de filtro). */
+.tooltip-grafico {
+  position: fixed;
+  z-index: 70;
+  pointer-events: none;
+  min-width: 224px;
+  max-width: 312px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--pbi-borda);
+  background: var(--pbi-superficie);
+  color: var(--pbi-ink);
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--pbi-ink) 16%, transparent);
+  font-family: var(--font);
+  font-size: 0.78rem;
+  line-height: 1.3;
+}
+.tooltip-grafico-cabecalho {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--pbi-borda);
+}
+.tooltip-grafico-titulo {
+  font-weight: 700;
+  color: var(--pbi-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tooltip-grafico-subtitulo {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--pbi-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.tooltip-grafico-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tooltip-grafico-item {
+  display: grid;
+  grid-template-columns: minmax(74px, 1fr) 56px auto;
+  align-items: center;
+  gap: 8px;
+}
+.tooltip-grafico-nome {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--pbi-ink);
+}
+.tooltip-grafico-ponto {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.tooltip-grafico-rotulo {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tooltip-grafico-trilho {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--pbi-barra-fundo);
+  overflow: hidden;
+}
+.tooltip-grafico-barra {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  min-width: 2px;
+}
+.tooltip-grafico-valores {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tooltip-grafico-valor {
+  font-weight: 700;
+  color: var(--pbi-ink);
+}
+.tooltip-grafico-detalhe {
+  font-size: 0.7rem;
+  color: var(--pbi-muted);
+}
+.tooltip-grafico-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 7px;
+  padding-top: 6px;
+  border-top: 1px solid var(--pbi-borda);
+  font-size: 0.75rem;
+  color: var(--pbi-muted);
+  font-variant-numeric: tabular-nums;
+}
+.tooltip-grafico-total strong {
+  color: var(--pbi-ink);
+  font-weight: 700;
+}
+.tooltip-grafico-dica {
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px dashed var(--pbi-borda);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--pbi-primary-texto);
+}
 
 /* ==================================================================== estados */
 /* Os estados (esqueleto, vazio, "não carregou") são componentes de `ui/Estado.tsx`.
